@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Survivors - Punk Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- UI Overlay -->
+        <div class="ui-overlay">
+            <div class="top-bar">
+                    <div class="left-controls">
+                        <div class="health-bar">
+                    <div class="health-fill" id="healthBar"></div>
+                    <span class="health-text" id="healthText">100/100</span>
+                </div>
+                    </div>
+                    <div class="stats">
+                        <div class="level">Lvl: <span id="playerLevel">1</span></div>
+                        <div class="exp">EXP: <span id="expText">0/10</span></div>
+                        <div class="timer">Time: <span id="gameTimer">00:00</span></div>
+                        <div class="highscore">Best: <span id="highscore">00:00</span></div>
+                    </div>
+                    <div class="right-controls">
+                        <button id="btnPause" class="small-btn">PAUSE</button>
+                        <button id="btnMute" class="small-btn">MUTE</button>
+                        <button id="btnLowGraphics" class="small-btn">LOW</button>
+                        <button id="btnFullscreen" class="small-btn">FULL</button>
+                    </div>
+            </div>
+            
+            <!-- Level Up Modal -->
+            <div class="level-up-modal" id="levelUpModal" style="display: none;">
+                <div class="modal-content">
+                    <h2>LEVEL UP!</h2>
+                    <p>Choose your upgrade:</p>
+                    <div class="upgrade-options" id="upgradeOptions">
+                        <!-- Upgrade options will be generated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loot Modal -->
+            <div class="level-up-modal" id="lootModal" style="display: none;">
+                <div class="modal-content">
+                    <h2>LOOTBOX</h2>
+                    <p>Choose one reward:</p>
+                    <div class="upgrade-options" id="lootOptions">
+                        <!-- Loot options here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Game Over Modal -->
+            <div class="game-over-modal" id="gameOverModal" style="display: none;">
+                <div class="modal-content">
+                    <h2>GAME OVER</h2>
+                    <p>You survived for <span id="finalTime">00:00</span></p>
+                    <p>Final Level: <span id="finalLevel">1</span></p>
+                    <button class="restart-btn" onclick="location.reload()">RESTART</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game Canvas -->
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Start Screen -->
+        <div class="start-screen" id="startScreen">
+            <div class="title">
+                <h1>NEON SURVIVORS</h1>
+                <p class="subtitle">Punk Edition</p>
+            </div>
+            <div class="controls">
+                <p>Use WASD or Arrow Keys to move</p>
+                <p>Survive as long as possible!</p>
+                <button class="start-btn" onclick="startGame()">START GAME</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>
