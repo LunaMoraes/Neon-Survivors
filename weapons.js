@@ -6,6 +6,11 @@ class WeaponSystem {
             spread: { ...GAME_CONFIG.WEAPONS.SPREAD, lastShot: 0 },
             laser: { ...GAME_CONFIG.WEAPONS.LASER, lastShot: 0 }
         };
+        // keep baseDamage and multiplier so upgrades stack predictably
+        Object.values(this.weapons).forEach(w => {
+            w._baseDamage = w.damage;
+            w._damageMultiplier = 0; // additive multipliers (0.2 = +20%)
+        });
         this.activeWeapons = ['basic'];
         this.unlockedWeapons = new Set(['basic']);
         this.criticalChance = 0;
@@ -52,10 +57,11 @@ class WeaponSystem {
     }
     
     createProjectile(x, y, angle, weapon, projectiles) {
-        // Calculate damage with critical chance
-        let damage = weapon.damage;
+        // Calculate damage with critical chance using baseDamage + multiplier
+    let base = weapon._baseDamage || weapon.damage || 1;
+    let mult = weapon._damageMultiplier || 0;
+    let damage = Math.round(base * (1 + mult));
         let isCritical = false;
-        
         if (this.criticalChance > 0 && Math.random() < this.criticalChance) {
             damage *= 2;
             isCritical = true;
@@ -93,8 +99,12 @@ class WeaponSystem {
     }
     
     upgradeDamage(percent) {
+        // Apply multiplicative stacking so multiple upgrades compound
         Object.values(this.weapons).forEach(weapon => {
-            weapon.damage = Math.floor(weapon.damage * (1 + percent));
+            const prev = weapon._damageMultiplier || 0;
+            // prev is additive-style stored as fraction; convert to multiplier, compound, store back
+            const compounded = (1 + prev) * (1 + percent) - 1;
+            weapon._damageMultiplier = compounded;
         });
     }
     

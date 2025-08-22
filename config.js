@@ -84,7 +84,9 @@ const CONFIG = {
         BASE_SPAWN_RATE: 0.6,
         DIFFICULTY_SCALE: 0.4,
         MAX_SPAWNS_PER_FRAME: 5,
-        SPAWN_ACCUMULATOR_THRESHOLD: 800
+    SPAWN_ACCUMULATOR_THRESHOLD: 800,
+    // Cap how strong per-enemy difficulty multipliers can get (prevents extreme speeds/damage)
+    MAX_ENEMY_DIFFICULTY: 2.0
     },
     
     // Visual settings

@@ -2,6 +2,10 @@
 const gameState = {
     running: false,
     paused: false,
+    // When a modal (loot/level) opened by the game is active
+    modalPaused: false,
+    // queue for pending level ups
+    levelUpQueue: 0,
     muted: false,
     startTime: 0,
     lastTime: 0,
@@ -31,7 +35,6 @@ canvas.addEventListener('mousemove', (e) => {
     reticle.style.left = `${e.clientX}px`;
     reticle.style.top = `${e.clientY}px`;
 });
-
 canvas.addEventListener('click', () => {
     // Try to resume audio context on first interaction (non-blocking)
     if (audioCtx && audioCtx.state === 'suspended') {
@@ -64,8 +67,6 @@ const lootBoxes = [];
 
 // Enemy types
 const enemyTypes = GAME_CONFIG.ENEMY_TYPES;
-
-// Input handling
 const keys = {};
 window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
@@ -293,7 +294,10 @@ function updateExpOrbs(delta) {
             // pickup distance increased so fast players can scoop orbs
             if (distance < Math.max(22, player.size + 6)) {
                 const shouldLevelUp = player.addExp(orb.value);
-                if (shouldLevelUp) levelUp();
+                if (shouldLevelUp) {
+                    gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1;
+                    processLevelQueue();
+                }
                 expOrbs.splice(i, 1);
                 playSfx('pickup');
                 continue;
@@ -335,15 +339,17 @@ function openLootBox(index) {
     if (!box || box.opened) return;
     box.opened = true;
     
-    // Pause the game during loot selection
+    // Pause the game during loot selection. Save previous pause state so we can restore it.
+    gameState.previousPaused = !!gameState.paused;
+    gameState.modalPaused = true;
     gameState.paused = true;
     
     // generate 3 loot choices
     const lootPool = [
         { name: 'Minor Health', effect: () => { player.health = Math.min(player.maxHealth, player.health + 30); } },
-        { name: 'Exp Cache', effect: () => { player.exp += 5; if (player.exp >= player.expToNext) levelUp(); } },
+        { name: 'Exp Cache', effect: () => { player.exp += 5; if (player.exp >= player.expToNext) { gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1; processLevelQueue(); } } },
         { name: 'Speed Chip', effect: () => { player.speed += 30; } },
-        { name: 'Weapon Shard', effect: () => { Object.values(weapons).forEach(w=> w.damage = Math.floor(w.damage * 1.1)); } },
+    { name: 'Weapon Shard', effect: () => { if (weaponSystem) weaponSystem.upgradeDamage(0.25); } },
         { name: 'Max Health', effect: () => { player.maxHealth += 20; player.health += 20; } }
     ];
 
@@ -356,7 +362,10 @@ function openLootBox(index) {
     const handleLootSelection = (item) => {
         item.effect();
         modal.style.display = 'none';
-        gameState.paused = false; // Resume the game
+        // restore previous pause state (if player had manually paused the game keep it paused)
+        gameState.modalPaused = false;
+        gameState.paused = !!gameState.previousPaused;
+        delete gameState.previousPaused;
     };
     
     shuffled.forEach(item => {
@@ -371,8 +380,25 @@ function openLootBox(index) {
 
 
 function levelUp() {
+    // queue level ups to avoid modal/pause races
+    gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1;
+    processLevelQueue();
+}
+
+function processLevelQueue() {
+    if (!gameState.levelUpQueue || gameState.levelUpQueue <= 0) return;
+    const modal = document.getElementById('levelUpModal');
+    const lootModal = document.getElementById('lootModal');
+    // If another modal is open, wait
+    if ((modal && modal.style.display === 'flex') || (lootModal && lootModal.style.display === 'flex')) return;
+
+    // Apply the level increment now
     player.levelUp();
+    gameState.levelUpQueue = Math.max(0, gameState.levelUpQueue - 1);
+    // Pause and show modal
+    gameState.previousPaused = !!gameState.paused;
     gameState.paused = true;
+    gameState.modalPaused = true;
     showLevelUpModal();
 }
 
@@ -397,10 +423,10 @@ function showLevelUpModal() {
             }
         },
         {
-            name: 'Weapon Damage +20%',
-            description: 'Increase all weapon damage by 20%',
+            name: 'Weapon Damage +40%',
+            description: 'Increase all weapon damage by 40% (stacks)',
             effect: () => {
-                weaponSystem.upgradeDamage(0.2);
+                weaponSystem.upgradeDamage(0.4);
             }
         },
         {
@@ -477,7 +503,14 @@ function showLevelUpModal() {
         div.onclick = () => {
             upgrade.effect();
             modal.style.display = 'none';
-            gameState.paused = false;
+            // restore previous pause state
+            gameState.modalPaused = false;
+            gameState.paused = !!gameState.previousPaused;
+            delete gameState.previousPaused;
+            // If more queued level-ups remain, process next
+            if (gameState.levelUpQueue && gameState.levelUpQueue > 0) {
+                setTimeout(processLevelQueue, 200);
+            }
         };
         options.appendChild(div);
     });
@@ -583,6 +616,43 @@ function updateUI() {
     }
 }
 
+// Populate debug overlay with weapon and enemy stats
+function updateDebugOverlay() {
+    if (!showDebug) return;
+    if (!weaponSystem || !player) {
+        debugOverlay.textContent = 'weaponSystem/player not initialized';
+        return;
+    }
+
+    const lines = [];
+    lines.push('--- DEBUG ---');
+    // weapon info
+    Object.entries(weaponSystem.weapons).forEach(([name, w]) => {
+        const base = w._baseDamage || w.damage || 0;
+        const mult = (w._damageMultiplier || 0).toFixed(2);
+        const effective = Math.round(base * (1 + (w._damageMultiplier || 0)));
+        lines.push(`${name}: base=${base} mult=${mult} -> eff=${effective} dmg cooldown=${w.cooldown}`);
+    });
+
+    // nearest enemy info
+    if (enemies.length > 0) {
+        let nearest = enemies[0];
+        let nd = Math.hypot(player.x - nearest.x, player.y - nearest.y);
+        for (let i = 1; i < enemies.length; i++) {
+            const e = enemies[i];
+            const d = Math.hypot(player.x - e.x, player.y - e.y);
+            if (d < nd) { nearest = e; nd = d; }
+        }
+        lines.push(`nearestEnemy: type=${nearest.type} hp=${nearest.health}/${nearest.maxHealth} speed=${nearest.speed.toFixed(1)} dmg=${nearest.damage}`);
+    } else {
+        lines.push('nearestEnemy: none');
+    }
+
+    lines.push(`levelUpQueue=${gameState.levelUpQueue || 0} paused=${gameState.paused} modalPaused=${gameState.modalPaused}`);
+
+    debugOverlay.textContent = lines.join('\n');
+}
+
 // Highscore (longest survival time in seconds)
 function saveHighscore() {
     const timeElapsed = Math.floor((performance.now() - gameState.startTime) / 1000);
@@ -640,6 +710,24 @@ function playSfx(name) {
 
 // Debug: Show pool stats (press P) and toggle quadtree visualization (press Q)
 let showQuadtree = false;
+let showDebug = false;
+// create debug overlay element
+const debugOverlay = document.createElement('div');
+debugOverlay.id = 'debugOverlay';
+debugOverlay.style.position = 'absolute';
+debugOverlay.style.left = '8px';
+debugOverlay.style.bottom = '8px';
+debugOverlay.style.padding = '8px 10px';
+debugOverlay.style.background = 'rgba(0,0,0,0.6)';
+debugOverlay.style.color = '#fff';
+debugOverlay.style.fontFamily = 'monospace';
+debugOverlay.style.fontSize = '12px';
+debugOverlay.style.zIndex = 1001;
+debugOverlay.style.pointerEvents = 'none';
+debugOverlay.style.maxWidth = '360px';
+debugOverlay.style.whiteSpace = 'pre-wrap';
+debugOverlay.style.display = 'none';
+document.body.appendChild(debugOverlay);
 window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyP' && e.shiftKey) {
         const stats = poolManager.getStats();
@@ -648,6 +736,11 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyQ' && e.shiftKey) {
         showQuadtree = !showQuadtree;
         console.log('Quadtree visualization:', showQuadtree ? 'ON' : 'OFF');
+    }
+    if (e.code === 'KeyU') {
+        showDebug = !showDebug;
+        debugOverlay.style.display = showDebug ? 'block' : 'none';
+        console.log('Debug overlay:', showDebug ? 'ON' : 'OFF');
     }
 });
 
@@ -939,6 +1032,7 @@ function gameLoop(now) {
     // Render and UI
     render();
     updateUI();
+    updateDebugOverlay();
 
     requestAnimationFrame(gameLoop);
 }
