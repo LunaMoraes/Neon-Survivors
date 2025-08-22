@@ -56,6 +56,30 @@ window.addEventListener('resize', resizeCanvas);
 // Game objects
 let player = null;
 let weaponSystem = null;
+let sessionExp = 0; // accumulated exp during current match
+let demoRunning = false;
+let demoInterval = null;
+let demoPlayer = null;
+
+function startDemo() {
+    if (demoRunning) return;
+    demoRunning = true;
+    // simple demo player object
+    demoPlayer = { x: canvas.width/2, y: canvas.height/2, size: 20, color: '#00ff88' };
+    // lightweight demo weapon system
+    const ds = new WeaponSystem();
+    demoInterval = setInterval(() => {
+        // spawn a random enemy near edges
+        spawnEnemy(1.2);
+    }, 1000);
+    // render loop will draw demo player and enemies while not running
+}
+
+function stopDemo() {
+    demoRunning = false;
+    if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+    demoPlayer = null;
+}
 
 const enemies = [];
 const projectiles = [];
@@ -170,10 +194,10 @@ function spawnEnemy(difficultyFactor = 1) {
 function updateEnemies(delta) {
     for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
-
-        // Move towards player (speed in px/sec)
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
+        const target = player || demoPlayer;
+        // Move towards target (player or demo player) (speed in px/sec)
+        const dx = (target.x || 0) - enemy.x;
+        const dy = (target.y || 0) - enemy.y;
         const distance = Math.hypot(dx, dy);
 
         if (distance > 0) {
@@ -304,7 +328,8 @@ function updateExpOrbs(delta) {
             orb.y += Math.sin(angle) * speed * (delta / 1000);
             // pickup distance increased so fast players can scoop orbs
             if (distance < Math.max(22, player.size + 6)) {
-                const shouldLevelUp = player.addExp(orb.value);
+                    const shouldLevelUp = player.addExp(orb.value);
+                    sessionExp += orb.value;
                 if (shouldLevelUp) {
                     gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1;
                     processLevelQueue();
@@ -606,6 +631,21 @@ function gameOver() {
     
     modal.style.display = 'flex';
     saveHighscore();
+
+    // Award perk points based on sessionExp and store in cookies
+    const prog = getPerkState();
+    let pointsAwarded = 1;
+    if (sessionExp >= (GAME_CONFIG.PROGRESSION.POINT_THRESHOLDS[1] || 150)) pointsAwarded = 3;
+    else if (sessionExp >= (GAME_CONFIG.PROGRESSION.POINT_THRESHOLDS[0] || 50)) pointsAwarded = 2;
+    prog.points = (prog.points || 0) + Math.min(pointsAwarded, GAME_CONFIG.PROGRESSION.MAX_POINTS_PER_MATCH || 3);
+    savePerkState(prog);
+    sessionExp = 0;
+
+    // Update Game Over modal buttons for restart / main menu
+    const modalContent = modal.querySelector('.modal-content');
+    modalContent.innerHTML = `\n        <h2>GAME OVER</h2>\n        <p>You survived for <span id="finalTimeDisplay">${finalTime.textContent}</span></p>\n        <p>Final Level: <span id="finalLevelDisplay">${player.level}</span></p>\n        <div style=\"display:flex;gap:12px;justify-content:center;margin-top:12px;\">\n          <button class=\"start-btn\" id=\"goMain\">MAIN MENU</button>\n          <button class=\"start-btn\" id=\"goRestart\">RESTART</button>\n        </div>\n    `;
+    document.getElementById('goMain').addEventListener('click', () => { document.getElementById('gameOverModal').style.display = 'none'; document.getElementById('startScreen').style.display = 'flex'; });
+    document.getElementById('goRestart').addEventListener('click', () => { location.reload(); });
 }
 
 function updateUI() {
@@ -893,13 +933,14 @@ function render() {
     
     // Draw player
     ctx.save();
-    if (player.invulnerable) {
+    const renderPlayer = player || demoPlayer;
+    if (renderPlayer && renderPlayer.invulnerable) {
         ctx.globalAlpha = Math.sin(Date.now() * 0.02) * 0.5 + 0.5;
     }
     
         // Draw player with punk mohawk and jacket
         ctx.save();
-        if (player.invulnerable) {
+        if (renderPlayer && renderPlayer.invulnerable) {
             ctx.globalAlpha = Math.sin(Date.now() * 0.02) * 0.5 + 0.5;
         }
 
@@ -907,13 +948,13 @@ function render() {
         ctx.save();
         ctx.fillStyle = '#111';
         ctx.beginPath();
-        ctx.ellipse(player.x, player.y + player.size * 0.7, player.size * 1.5, player.size * 0.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(renderPlayer.x, renderPlayer.y + renderPlayer.size * 0.7, renderPlayer.size * 1.5, renderPlayer.size * 0.9, 0, 0, Math.PI * 2);
         ctx.fill();
         // studs on jacket
         if (!gameState.lowGraphics) {
             for (let i = -2; i <= 2; i++) {
                 ctx.fillStyle = 'rgba(200,200,200,0.9)';
-                ctx.beginPath(); ctx.arc(player.x + i * 8, player.y + player.size * 0.5, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(renderPlayer.x + i * 8, renderPlayer.y + renderPlayer.size * 0.5, 2, 0, Math.PI * 2); ctx.fill();
             }
         }
         ctx.restore();
@@ -922,25 +963,25 @@ function render() {
         ctx.fillStyle = player.color;
         ctx.shadowColor = player.color;
         ctx.shadowBlur = gameState.lowGraphics ? 0 : 14;
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
-        ctx.fill();
+    ctx.beginPath();
+    ctx.arc(renderPlayer.x, renderPlayer.y, renderPlayer.size, 0, Math.PI * 2);
+    ctx.fill();
 
         // Player core
         ctx.fillStyle = '#ffffff';
         ctx.shadowBlur = gameState.lowGraphics ? 0 : 8;
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, player.size * 0.5, 0, Math.PI * 2);
-        ctx.fill();
+    ctx.beginPath();
+    ctx.arc(renderPlayer.x, renderPlayer.y, renderPlayer.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
 
         // Mohawk: draw triangular spikes across the top
         const spikes = 7;
-        const spikeW = player.size * 0.8;
+    const spikeW = renderPlayer.size * 0.8;
         for (let i = 0; i < spikes; i++) {
             const t = (i / (spikes - 1)) - 0.5;
-            const px = player.x + t * spikeW * 1.6;
-            const py = player.y - player.size * 0.9 + Math.abs(t) * 2;
-            const h = player.size * (1.2 + (1 - Math.abs(t)) * 0.8);
+            const px = renderPlayer.x + t * spikeW * 1.6;
+            const py = renderPlayer.y - renderPlayer.size * 0.9 + Math.abs(t) * 2;
+            const h = renderPlayer.size * (1.2 + (1 - Math.abs(t)) * 0.8);
             // color gradient neon punk
             const color = i % 2 === 0 ? '#ff00aa' : '#00ddff';
             ctx.fillStyle = color;
@@ -1051,4 +1092,86 @@ function gameLoop(now) {
 // Initialize
 window.addEventListener('load', () => {
     resizeCanvas();
+    // main menu wiring
+    const playBtn = document.getElementById('playBtn');
+    const progressionBtn = document.getElementById('progressionBtn');
+    const progressionModal = document.getElementById('progressionModal');
+    const closeProgression = document.getElementById('closeProgression');
+
+    playBtn?.addEventListener('click', () => {
+    document.getElementById('startScreen').style.display = 'none';
+    stopDemo();
+    startGame();
+    });
+    progressionBtn?.addEventListener('click', () => {
+        showProgression();
+    });
+    closeProgression?.addEventListener('click', () => { progressionModal.style.display = 'none'; });
+
+    renderPerkTrees();
+    // start background demo in main menu
+    startDemo();
 });
+
+// Cookie helpers for simple persistence
+function setCookie(name, value, days = 365) {
+    const d = new Date(); d.setTime(d.getTime() + (days*24*60*60*1000));
+    document.cookie = `${name}=${encodeURIComponent(JSON.stringify(value))};expires=${d.toUTCString()};path=/`;
+}
+function getCookie(name) {
+    const v = document.cookie.split('; ').find(row => row.startsWith(name+'='));
+    if (!v) return null;
+    try { return JSON.parse(decodeURIComponent(v.split('=')[1])); } catch(e) { return null; }
+}
+
+// Perk storage and UI
+function getPerkState() {
+    return getCookie('neon_perks') || { points: 0, trees: { speed: {}, strength: {}, defense: {} } };
+}
+function savePerkState(state) { setCookie('neon_perks', state); document.getElementById('perkPoints').textContent = (state.points||0); }
+
+function renderPerkTrees() {
+    const container = document.getElementById('perkTrees');
+    if (!container) return;
+    const state = getPerkState();
+    container.innerHTML = '';
+    const trees = ['speed','strength','defense'];
+    trees.forEach(t => {
+        const box = document.createElement('div');
+        box.style.border = '2px solid #00ff88';
+        box.style.padding = '12px';
+        box.style.margin = '8px';
+        box.style.display = 'inline-block';
+        box.style.verticalAlign = 'top';
+        box.style.width = '260px';
+        const title = document.createElement('h3'); title.textContent = t.toUpperCase(); box.appendChild(title);
+        // simple linear perk nodes (4 nodes)
+        for (let i=1;i<=4;i++) {
+            const node = document.createElement('div');
+            node.style.margin = '8px 0';
+            const owned = !!(state.trees[t] && state.trees[t][i]);
+            node.innerHTML = `<strong>Tier ${i}</strong> - ${owned ? 'OWNED' : 'LOCKED'} <button data-tree="${t}" data-tier="${i}">${owned ? 'Owned' : 'Buy'}</button>`;
+            const btn = node.querySelector('button');
+            btn.disabled = owned || (state.points <= 0);
+            btn.addEventListener('click', () => {
+                if (state.points <= 0) return;
+                state.points = Math.max(0, state.points - 1);
+                state.trees[t] = state.trees[t] || {};
+                state.trees[t][i] = true;
+                savePerkState(state);
+                renderPerkTrees();
+            });
+            box.appendChild(node);
+        }
+        container.appendChild(box);
+    });
+}
+
+function showProgression() {
+    const modal = document.getElementById('progressionModal');
+    if (!modal) return;
+    const state = getPerkState();
+    document.getElementById('perkPoints').textContent = state.points || 0;
+    renderPerkTrees();
+    modal.style.display = 'flex';
+}

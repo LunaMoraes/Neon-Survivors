@@ -107,8 +107,20 @@ const CONFIG = {
         DIFFICULTY_SCALE: 0.4,
         MAX_SPAWNS_PER_FRAME: 5,
         SPAWN_ACCUMULATOR_THRESHOLD: 800,
-        // Cap how strong per-enemy difficulty multipliers can get (prevents extreme speeds/damage)
+        // Per-type speed caps (multiplier) to avoid impossible-to-hit enemies
+        TYPE_SPEED_CAPS: {
+            HUNTER: 2.2,
+            ASSASSIN: 2.0
+        },
+        // (legacy) max enemy difficulty placeholder (not used by spawn now)
         MAX_ENEMY_DIFFICULTY: 2.0
+    },
+
+    // Progression / perks
+    PROGRESSION: {
+        // sessionExp thresholds for awarding 1/2/3 perk points
+        POINT_THRESHOLDS: [50, 150], // <50 =>1, 50-149 =>2, >=150 =>3
+        MAX_POINTS_PER_MATCH: 3
     },
     
     // Visual settings
