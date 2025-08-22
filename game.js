@@ -118,10 +118,17 @@ function spawnEnemy(difficultyFactor = 1) {
     let type = 'DRONE';
     const roll = Math.random();
     
-    if (difficultyFactor > 3) {
-        // High difficulty: more tanks and hunters
-        if (roll > 0.7) type = 'TANK';
-        else if (roll > 0.3) type = 'HUNTER';
+    if (difficultyFactor > 5) {
+        // Very high difficulty: BRUTE and ASSASSIN appear
+        if (roll > 0.85) type = 'BRUTE';
+        else if (roll > 0.6) type = 'ASSASSIN';
+        else if (roll > 0.35) type = 'TANK';
+        else type = 'HUNTER';
+    } else if (difficultyFactor > 3) {
+        // High difficulty: more tanks and hunters and some assassins
+        if (roll > 0.75) type = 'TANK';
+        else if (roll > 0.45) type = 'HUNTER';
+        else if (roll > 0.3) type = 'ASSASSIN';
     } else if (difficultyFactor > 2) {
         // Medium difficulty: balanced mix
         if (roll > 0.8) type = 'TANK';
@@ -149,13 +156,14 @@ function spawnEnemy(difficultyFactor = 1) {
         x: x,
         y: y,
         type: type,
-        size: enemyData.size,
-        speed: enemyData.speed * difficultyFactor,
-        health: Math.floor(enemyData.health * difficultyFactor),
-        damage: enemyData.damage,
+    size: enemyData.size,
+    speed: enemyData.speed * difficultyFactor,
+    health: Math.floor(enemyData.health * difficultyFactor),
+    damage: Math.max(1, Math.floor(enemyData.damage * difficultyFactor)),
         color: enemyData.color,
-        exp: enemyData.exp,
-        maxHealth: Math.floor(enemyData.health * difficultyFactor)
+    exp: enemyData.exp,
+    maxHealth: Math.floor(enemyData.health * difficultyFactor),
+    armor: enemyData.armor || 0
     }));
 }
 
@@ -238,13 +246,16 @@ function updateProjectiles(delta) {
                 if (obj !== projectile && enemies.includes(obj)) {
                     const distance = Math.hypot(projectile.x - obj.x, projectile.y - obj.y);
                     if (distance < projectile.size + obj.size) {
-                        obj.health -= projectile.damage;
+                        // Apply armor: damage reduced by enemy armor percentage
+                        const armor = obj.armor || 0;
+                        const effectiveDamage = Math.max(0, Math.round(projectile.damage * (1 - armor)));
+                        obj.health -= effectiveDamage;
                         createParticles(obj.x, obj.y, projectile.color, 4);
                         playSfx('hit');
                         if (obj.health <= 0) {
                             // XP orb lasts longer so player has time to pick it up
                             expOrbs.push(poolManager.createExpOrb({ x: obj.x, y: obj.y, value: obj.exp, life: 8000 }));
-                            createParticles(obj.x, obj.y, '#ffff00', 12);
+                            createParticles(obj.x, obj.y, '#00ff00', 12);
                             // Chance to drop lootbox
                             if (Math.random() < 0.18) {
                                 lootBoxes.push(poolManager.createLootBox({ x: obj.x, y: obj.y, life: 12000, opened: false }));
@@ -811,8 +822,8 @@ function render() {
     // Draw exp orbs
     expOrbs.forEach(orb => {
         const pulse = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;
-        ctx.fillStyle = `rgba(255, 255, 0, ${0.8 + pulse * 0.2})`;
-        ctx.shadowColor = '#ffff00';
+    ctx.fillStyle = `rgba(0, 255, 0, ${0.8 + pulse * 0.2})`;
+    ctx.shadowColor = '#00ff00';
         ctx.shadowBlur = 15;
         ctx.beginPath();
         ctx.arc(orb.x, orb.y, 6, 0, Math.PI * 2);

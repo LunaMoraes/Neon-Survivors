@@ -48,7 +48,8 @@ const CONFIG = {
             health: 30,
             damage: 10,
             color: '#ff4444',
-            exp: 2
+            exp: 2,
+            armor: 0
         },
         HUNTER: {
             size: 14,
@@ -56,7 +57,8 @@ const CONFIG = {
             health: 20,
             damage: 15,
             color: '#ff8800',
-            exp: 3
+            exp: 3,
+            armor: 0
         },
         TANK: {
             size: 28,
@@ -64,7 +66,27 @@ const CONFIG = {
             health: 120,
             damage: 25,
             color: '#8800ff',
-            exp: 6
+            exp: 6,
+            armor: 0.15
+        }
+        ,
+        ASSASSIN: {
+            size: 12,
+            speed: 180,
+            health: 18,
+            damage: 18,
+            color: '#00ffaa',
+            exp: 4,
+            armor: 0
+        },
+        BRUTE: {
+            size: 34,
+            speed: 38,
+            health: 220,
+            damage: 32,
+            color: '#aa44ff',
+            exp: 10,
+            armor: 0.3
         }
     },
     
@@ -84,9 +106,9 @@ const CONFIG = {
         BASE_SPAWN_RATE: 0.6,
         DIFFICULTY_SCALE: 0.4,
         MAX_SPAWNS_PER_FRAME: 5,
-    SPAWN_ACCUMULATOR_THRESHOLD: 800,
-    // Cap how strong per-enemy difficulty multipliers can get (prevents extreme speeds/damage)
-    MAX_ENEMY_DIFFICULTY: 2.0
+        SPAWN_ACCUMULATOR_THRESHOLD: 800,
+        // Cap how strong per-enemy difficulty multipliers can get (prevents extreme speeds/damage)
+        MAX_ENEMY_DIFFICULTY: 2.0
     },
     
     // Visual settings
