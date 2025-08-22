@@ -306,26 +306,23 @@ function updateExpOrbs(delta) {
     }
 }
 
-// Loot interaction: press E near lootbox or click on it to open
-window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyE') {
-        // find nearest loot near player
-        let nearest = null; let nd = Infinity;
-        lootBoxes.forEach((l, idx) => {
-            const d = Math.hypot(player.x - l.x, player.y - l.y);
-            if (d < 60 && !l.opened && d < nd) { nearest = { l, idx }; nd = d; }
-        });
-        if (nearest) {
-            openLootBox(nearest.idx);
-        }
-    }
-});
+// Loot interaction: auto-collected when player steps on lootbox
 
-// Add loot box cleanup in update loop
+// Add loot box cleanup and auto-collection in update loop
 function updateLootBoxes(delta) {
     for (let i = lootBoxes.length - 1; i >= 0; i--) {
         const box = lootBoxes[i];
         box.life -= delta;
+        
+        // Auto-collect when player steps on lootbox
+        if (player && !box.opened) {
+            const distance = Math.hypot(player.x - box.x, player.y - box.y);
+            if (distance < player.size + 20) { // 20px pickup radius
+                openLootBox(i);
+                continue; // Skip to next lootbox since this one is being opened
+            }
+        }
+        
         if (box.life <= 0) {
             poolManager.releaseLootBox(lootBoxes[i]);
             lootBoxes.splice(i, 1);
@@ -337,6 +334,10 @@ function openLootBox(index) {
     const box = lootBoxes[index];
     if (!box || box.opened) return;
     box.opened = true;
+    
+    // Pause the game during loot selection
+    gameState.paused = true;
+    
     // generate 3 loot choices
     const lootPool = [
         { name: 'Minor Health', effect: () => { player.health = Math.min(player.maxHealth, player.health + 30); } },
@@ -350,11 +351,19 @@ function openLootBox(index) {
     const modal = document.getElementById('lootModal');
     const options = document.getElementById('lootOptions');
     options.innerHTML = '';
+    
+    // Create a function to handle loot selection and resume game
+    const handleLootSelection = (item) => {
+        item.effect();
+        modal.style.display = 'none';
+        gameState.paused = false; // Resume the game
+    };
+    
     shuffled.forEach(item => {
         const div = document.createElement('div');
         div.className = 'upgrade-option loot-item';
         div.innerHTML = `<h3>${item.name}</h3><p></p>`;
-        div.onclick = () => { item.effect(); modal.style.display = 'none'; }
+        div.onclick = () => handleLootSelection(item);
         options.appendChild(div);
     });
     modal.style.display = 'flex';
