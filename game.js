@@ -67,10 +67,12 @@ function startDemo() {
     if (demoRunning) return;
     demoRunning = true;
     // simple demo player object
-    demoPlayer = { x: canvas.width/2, y: canvas.height/2, size: 20, color: '#00ff88' };
+    demoPlayer = { x: canvas.width/2, y: canvas.height/2, size: 20, color: '#00ff88', invulnerable: false, level: 1 };
     // lightweight demo weapon system
     const ds = new WeaponSystem();
-    demoInterval = setInterval(() => { spawnEnemy(1.2); }, 1100);
+    // seed a few enemies and spawn more often so demo is visible
+    spawnEnemy(1.0); spawnEnemy(1.1); spawnEnemy(1.2);
+    demoInterval = setInterval(() => { spawnEnemy(1.2); }, 700);
     // start a render loop for the demo while the main game is not running
     function demoLoop() {
         if (!demoRunning || gameState.running) { demoRaf = null; return; }
@@ -269,8 +271,8 @@ function updateEnemies(delta) {
             enemy.y += (dy / distance) * enemy.speed * (delta / 1000);
         }
 
-        // Check collision with player using quadtree
-        if (window.quadtreeManager) {
+        // Check collision with player using quadtree (only when real player exists)
+        if (player && window.quadtreeManager) {
             const potentialCollisions = window.quadtreeManager.findCollisions(enemy);
             
             for (const obj of potentialCollisions) {
@@ -376,32 +378,38 @@ function updateExpOrbs(delta) {
     for (let i = expOrbs.length - 1; i >= 0; i--) {
         const orb = expOrbs[i];
         orb.life -= delta;
-        const distance = Math.hypot(player.x - orb.x, player.y - orb.y);
-        // attraction range scales with player speed to avoid falling behind
-        // Increased attraction range with exp magnet upgrade
-        let attractionRange = Math.max(120, player.speed * 0.6);
-        if (player.expMagnet) {
-            attractionRange *= 1.5; // 50% larger attraction range
-        }
-        if (distance < attractionRange) {
-            const angle = Math.atan2(player.y - orb.y, player.x - orb.x);
-            // base speed + bonus proportional to player speed
-            const baseSpeed = 240;
-            const speed = baseSpeed + (player.speed * 0.8);
-            orb.x += Math.cos(angle) * speed * (delta / 1000);
-            orb.y += Math.sin(angle) * speed * (delta / 1000);
-            // pickup distance increased so fast players can scoop orbs
-            if (distance < Math.max(22, player.size + 6)) {
-                    const shouldLevelUp = player.addExp(orb.value);
-                    sessionExp += orb.value;
-                if (shouldLevelUp) {
-                    gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1;
-                    processLevelQueue();
-                }
-                expOrbs.splice(i, 1);
-                playSfx('pickup');
-                continue;
+        if (player) {
+            const distance = Math.hypot(player.x - orb.x, player.y - orb.y);
+            // attraction range scales with player speed to avoid falling behind
+            // Increased attraction range with exp magnet upgrade
+            let attractionRange = Math.max(120, player.speed * 0.6);
+            if (player.expMagnet) {
+                attractionRange *= 1.5; // 50% larger attraction range
             }
+            if (distance < attractionRange) {
+                const angle = Math.atan2(player.y - orb.y, player.x - orb.x);
+                // base speed + bonus proportional to player speed
+                const baseSpeed = 240;
+                const speed = baseSpeed + (player.speed * 0.8);
+                orb.x += Math.cos(angle) * speed * (delta / 1000);
+                orb.y += Math.sin(angle) * speed * (delta / 1000);
+                // pickup distance increased so fast players can scoop orbs
+                if (distance < Math.max(22, player.size + 6)) {
+                        const shouldLevelUp = player.addExp(orb.value);
+                        sessionExp += orb.value;
+                    if (shouldLevelUp) {
+                        gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1;
+                        processLevelQueue();
+                    }
+                    expOrbs.splice(i, 1);
+                    playSfx('pickup');
+                    continue;
+                }
+            }
+        } else {
+            // In demo mode with no real player, slowly decay orbs so they don't accumulate
+            orb.x += (Math.random() - 0.5) * 6 * (delta / 16);
+            orb.y += (Math.random() - 0.5) * 6 * (delta / 16);
         }
         if (orb.life <= 0) {
             poolManager.releaseExpOrb(expOrbs[i]);
@@ -1039,16 +1047,24 @@ function render() {
         if (!gameState.lowGraphics) ctx.shadowBlur = 8;
     });
     
-    // Draw player
+    // Draw player (or demo player). Use a safe fallback to avoid null deref during demo.
     ctx.save();
-    const renderPlayer = player || demoPlayer;
-    if (renderPlayer && renderPlayer.invulnerable) {
+    const renderPlayer = player || demoPlayer || { x: canvas.width/2, y: canvas.height/2, size: 20, color: '#00ff88', invulnerable: false, level: 1 };
+    // Compute safe render player properties once
+    const rp = renderPlayer || {};
+    const rpX = (typeof rp.x === 'number') ? rp.x : (canvas.width/2);
+    const rpY = (typeof rp.y === 'number') ? rp.y : (canvas.height/2);
+    const rpSize = rp.size || 20;
+    const rpColor = rp.color || '#00ff88';
+    const rpInv = !!rp.invulnerable;
+
+    if (rpInv) {
         ctx.globalAlpha = Math.sin(Date.now() * 0.02) * 0.5 + 0.5;
     }
-    
+
         // Draw player with punk mohawk and jacket
         ctx.save();
-        if (renderPlayer && renderPlayer.invulnerable) {
+        if (rpInv) {
             ctx.globalAlpha = Math.sin(Date.now() * 0.02) * 0.5 + 0.5;
         }
 
@@ -1056,40 +1072,32 @@ function render() {
         ctx.save();
         ctx.fillStyle = '#111';
         ctx.beginPath();
-    ctx.ellipse(renderPlayer.x, renderPlayer.y + renderPlayer.size * 0.7, renderPlayer.size * 1.5, renderPlayer.size * 0.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(rpX, rpY + rpSize * 0.7, rpSize * 1.5, rpSize * 0.9, 0, 0, Math.PI * 2);
         ctx.fill();
         // studs on jacket
         if (!gameState.lowGraphics) {
             for (let i = -2; i <= 2; i++) {
                 ctx.fillStyle = 'rgba(200,200,200,0.9)';
-                ctx.beginPath(); ctx.arc(renderPlayer.x + i * 8, renderPlayer.y + renderPlayer.size * 0.5, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(rpX + i * 8, rpY + rpSize * 0.5, 2, 0, Math.PI * 2); ctx.fill();
             }
         }
         ctx.restore();
 
-        // Head base
-        ctx.fillStyle = player.color;
-        ctx.shadowColor = player.color;
-        ctx.shadowBlur = gameState.lowGraphics ? 0 : 14;
-    ctx.beginPath();
-    ctx.arc(renderPlayer.x, renderPlayer.y, renderPlayer.size, 0, Math.PI * 2);
-    ctx.fill();
-
         // Player core
         ctx.fillStyle = '#ffffff';
         ctx.shadowBlur = gameState.lowGraphics ? 0 : 8;
-    ctx.beginPath();
-    ctx.arc(renderPlayer.x, renderPlayer.y, renderPlayer.size * 0.5, 0, Math.PI * 2);
-    ctx.fill();
+        ctx.beginPath();
+        ctx.arc(rpX, rpY, rpSize * 0.5, 0, Math.PI * 2);
+        ctx.fill();
 
         // Mohawk: draw triangular spikes across the top
         const spikes = 7;
-    const spikeW = renderPlayer.size * 0.8;
+        const spikeW = rpSize * 0.8;
         for (let i = 0; i < spikes; i++) {
             const t = (i / (spikes - 1)) - 0.5;
-            const px = renderPlayer.x + t * spikeW * 1.6;
-            const py = renderPlayer.y - renderPlayer.size * 0.9 + Math.abs(t) * 2;
-            const h = renderPlayer.size * (1.2 + (1 - Math.abs(t)) * 0.8);
+            const px = rpX + t * spikeW * 1.6;
+            const py = rpY - rpSize * 0.9 + Math.abs(t) * 2;
+            const h = rpSize * (1.2 + (1 - Math.abs(t)) * 0.8);
             // color gradient neon punk
             const color = i % 2 === 0 ? '#ff00aa' : '#00ddff';
             ctx.fillStyle = color;
@@ -1102,10 +1110,10 @@ function render() {
         }
 
         // Visual aura by level (more aggressive when higher)
-        const stage = Math.min(4, Math.floor(player.level / 3) + 1);
+        const stage = Math.min(4, Math.floor((rp.level || 1) / 3) + 1);
         if (stage >= 2) {
             ctx.save(); ctx.globalAlpha = 0.6; ctx.strokeStyle = stage === 2 ? '#ff44aa' : stage === 3 ? '#44aaff' : '#ffd24d'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(player.x, player.y, player.size + 8 + stage * 3, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+            ctx.beginPath(); ctx.arc(rpX, rpY, rpSize + 8 + stage * 3, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         }
         ctx.restore();
     
