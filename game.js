@@ -8,6 +8,11 @@ const gameState = {
     elapsed: 0,
     spawnAccumulator: 0,
     lowGraphics: false,
+    screenShake: {
+        intensity: 0,
+        duration: 0,
+        time: 0
+    }
 };
 
 // Canvas setup
@@ -38,25 +43,16 @@ canvas.addEventListener('click', () => {
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    if (window.quadtreeManager) {
+        window.quadtreeManager.init(canvas);
+    }
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 // Game objects
-const player = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    size: 20,
-    speed: 220, // pixels per second
-    health: 100,
-    maxHealth: 100,
-    level: 1,
-    exp: 0,
-    expToNext: 10,
-    color: '#00ff88',
-    invulnerable: false,
-    invulnerabilityTime: 0
-};
+let player = null;
+let weaponSystem = null;
 
 const enemies = [];
 const projectiles = [];
@@ -64,67 +60,10 @@ const particles = [];
 const expOrbs = [];
 const lootBoxes = [];
 
-// Weapon system
-const weapons = {
-    basic: {
-        name: 'Neon Blaster',
-        damage: 15,
-        speed: 900, // pixels/sec
-        cooldown: 500,
-        lastShot: 0,
-        color: '#00ff88',
-        size: 4
-    },
-    spread: {
-        name: 'Plasma Spread',
-        damage: 10,
-        speed: 700,
-        cooldown: 300,
-        lastShot: 0,
-        color: '#ff0088',
-        size: 3,
-        count: 3
-    },
-    laser: {
-        name: 'Cyber Laser',
-        damage: 25,
-        speed: 1600,
-        cooldown: 800,
-        lastShot: 0,
-        color: '#0088ff',
-        size: 5
-    }
-};
-
-let activeWeapons = ['basic'];
+// Weapon system is now handled by WeaponSystem class
 
 // Enemy types
-const enemyTypes = {
-    drone: {
-        size: 18,
-        speed: 70,
-        health: 30,
-        damage: 10,
-        color: '#ff4444',
-        exp: 2
-    },
-    hunter: {
-        size: 14,
-        speed: 120,
-        health: 20,
-        damage: 15,
-        color: '#ff8800',
-        exp: 3
-    },
-    tank: {
-        size: 28,
-        speed: 40,
-        health: 120,
-        damage: 25,
-        color: '#8800ff',
-        exp: 6
-    }
-};
+const enemyTypes = GAME_CONFIG.ENEMY_TYPES;
 
 // Input handling
 const keys = {};
@@ -147,17 +86,16 @@ function startGame() {
     gameState.startTime = performance.now();
     gameState.lastTime = performance.now();
     resizeCanvas();
-    player.x = canvas.width / 2;
-    player.y = canvas.height / 2;
+    
+    // Initialize player and weapon system
+    player = new PlayerClass(canvas);
+    weaponSystem = new WeaponSystem();
+    
     // reset
     enemies.length = 0;
     projectiles.length = 0;
     particles.length = 0;
     expOrbs.length = 0;
-    player.health = player.maxHealth;
-    player.level = 1;
-    player.exp = 0;
-    player.expToNext = 10;
 
     // initial small wave so players see action immediately
     spawnEnemy(1);
@@ -169,39 +107,30 @@ function startGame() {
 }
 
 function updatePlayer(delta) {
-    if (player.invulnerable) {
-        player.invulnerabilityTime -= delta;
-        if (player.invulnerabilityTime <= 0) {
-            player.invulnerable = false;
-        }
-    }
-
-    // Movement
-    let dx = 0, dy = 0;
-    if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
-    if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
-    if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
-    if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
-
-    // Normalize
-    const len = Math.hypot(dx, dy);
-    if (len > 0) { dx /= len; dy /= len; }
-
-    player.x += dx * player.speed * (delta / 1000);
-    player.y += dy * player.speed * (delta / 1000);
-
-    // Keep player in bounds
-    player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
-    player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+    player.update(delta, canvas);
 }
 
 function spawnEnemy(difficultyFactor = 1) {
     const types = Object.keys(enemyTypes);
-    // Make rarer spawns for stronger types
+    
+    // Dynamic enemy type distribution based on difficulty
+    let type = 'DRONE';
     const roll = Math.random();
-    let type = 'drone';
-    if (roll > 0.85) type = 'tank';
-    else if (roll > 0.5) type = 'hunter';
+    
+    if (difficultyFactor > 3) {
+        // High difficulty: more tanks and hunters
+        if (roll > 0.7) type = 'TANK';
+        else if (roll > 0.3) type = 'HUNTER';
+    } else if (difficultyFactor > 2) {
+        // Medium difficulty: balanced mix
+        if (roll > 0.8) type = 'TANK';
+        else if (roll > 0.4) type = 'HUNTER';
+    } else if (difficultyFactor > 1.5) {
+        // Low-medium difficulty: some hunters
+        if (roll > 0.9) type = 'TANK';
+        else if (roll > 0.6) type = 'HUNTER';
+    }
+    // Low difficulty: mostly drones
 
     const enemyData = enemyTypes[type];
 
@@ -215,7 +144,7 @@ function spawnEnemy(difficultyFactor = 1) {
         case 3: x = -enemyData.size; y = Math.random() * canvas.height; break;
     }
 
-    enemies.push({
+    enemies.push(poolManager.createEnemy({
         x: x,
         y: y,
         type: type,
@@ -226,7 +155,7 @@ function spawnEnemy(difficultyFactor = 1) {
         color: enemyData.color,
         exp: enemyData.exp,
         maxHealth: Math.floor(enemyData.health * difficultyFactor)
-    });
+    }));
 }
 
 function updateEnemies(delta) {
@@ -243,120 +172,101 @@ function updateEnemies(delta) {
             enemy.y += (dy / distance) * enemy.speed * (delta / 1000);
         }
 
-        // Check collision with player
-        const playerDistance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
-        if (playerDistance < player.size + enemy.size && !player.invulnerable) {
-            player.health -= enemy.damage;
-            player.invulnerable = true;
-            player.invulnerabilityTime = 800;
-
-            // Knockback
-            const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-            const kb = 40;
-            player.x += Math.cos(angle) * kb;
-            player.y += Math.sin(angle) * kb;
-
-            createParticles(enemy.x, enemy.y, '#ff4444', 8);
-            playSfx('hit');
-
-            if (player.health <= 0) gameOver();
+        // Check collision with player using quadtree
+        if (window.quadtreeManager) {
+            const potentialCollisions = window.quadtreeManager.findCollisions(enemy);
+            
+            for (const obj of potentialCollisions) {
+                if (obj === player && !player.invulnerable) {
+                    const playerDistance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                    if (playerDistance < player.size + enemy.size) {
+                        const isDead = player.takeDamage(enemy.damage);
+                        
+                        if (isDead) {
+                            gameOver();
+                        } else {
+                            // Knockback
+                            const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                            const kb = GAME_CONFIG.VISUAL.KNOCKBACK;
+                            player.x += Math.cos(angle) * kb;
+                            player.y += Math.sin(angle) * kb;
+                            
+                            createParticles(enemy.x, enemy.y, '#ff4444', 8);
+                            playSfx('hit');
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
         // Remove enemies offscreen by a margin
         if (enemy.x < -2000 || enemy.x > canvas.width + 2000 || enemy.y < -2000 || enemy.y > canvas.height + 2000) {
+            poolManager.releaseEnemy(enemies[i]);
             enemies.splice(i, 1);
         }
     }
 }
 
 function updateWeapons(delta) {
-    const now = performance.now();
-    activeWeapons.forEach(weaponName => {
-        const weapon = weapons[weaponName];
-        if (now - weapon.lastShot >= weapon.cooldown) {
-            weapon.lastShot = now;
-            fireWeapon(weapon, weaponName);
-        }
-    });
+    weaponSystem.update(delta, player, enemies, projectiles);
 }
 
-function fireWeapon(weapon, weaponName) {
-    if (enemies.length === 0) return;
-    
-    // Find nearest enemy
-    let nearestEnemy = enemies[0];
-    let nearestDistance = Math.sqrt(
-        Math.pow(player.x - nearestEnemy.x, 2) + Math.pow(player.y - nearestEnemy.y, 2)
-    );
-    
-    enemies.forEach(enemy => {
-        const distance = Math.sqrt(
-            Math.pow(player.x - enemy.x, 2) + Math.pow(player.y - enemy.y, 2)
-        );
-        if (distance < nearestDistance) {
-            nearestDistance = distance;
-            nearestEnemy = enemy;
-        }
-    });
-    
-    const angle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
-    
-    if (weaponName === 'spread') {
-        // Fire multiple projectiles
-        for (let i = 0; i < weapon.count; i++) {
-            const spreadAngle = angle + (i - 1) * 0.3;
-            createProjectile(player.x, player.y, spreadAngle, weapon);
-        }
-    } else {
-        createProjectile(player.x, player.y, angle, weapon);
-    }
-}
+// fireWeapon function is now handled by WeaponSystem class
 
-function createProjectile(x, y, angle, weapon) {
-    projectiles.push({
-        x: x,
-        y: y,
-        dx: Math.cos(angle) * weapon.speed,
-        dy: Math.sin(angle) * weapon.speed,
-        damage: weapon.damage,
-        color: weapon.color,
-        size: weapon.size,
-        life: 2000
-    });
-    playSfx('shoot');
-}
+// createProjectile function is now handled by WeaponSystem class
 
 function updateProjectiles(delta) {
+    // Update quadtree with current game state
+    if (window.quadtreeManager) {
+        window.quadtreeManager.update(enemies, projectiles, player);
+    }
+    
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i];
         projectile.x += projectile.dx * (delta / 1000);
         projectile.y += projectile.dy * (delta / 1000);
         projectile.life -= delta;
 
-        // Check collision with enemies
-        for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            const distance = Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y);
-            if (distance < projectile.size + enemy.size) {
-                enemy.health -= projectile.damage;
-                createParticles(enemy.x, enemy.y, projectile.color, 4);
-                playSfx('hit');
-                if (enemy.health <= 0) {
-                    // XP orb lasts longer so player has time to pick it up
-                    expOrbs.push({ x: enemy.x, y: enemy.y, value: enemy.exp, life: 8000 });
-                    createParticles(enemy.x, enemy.y, '#ffff00', 12);
-                    // Chance to drop lootbox
-                    if (Math.random() < 0.18) {
-                        lootBoxes.push({ x: enemy.x, y: enemy.y, life: 12000, opened: false });
+        // Check collision with enemies using quadtree
+        let collisionFound = false;
+        if (window.quadtreeManager) {
+            const potentialCollisions = window.quadtreeManager.findCollisions(projectile);
+            
+            for (const obj of potentialCollisions) {
+                if (obj !== projectile && enemies.includes(obj)) {
+                    const distance = Math.hypot(projectile.x - obj.x, projectile.y - obj.y);
+                    if (distance < projectile.size + obj.size) {
+                        obj.health -= projectile.damage;
+                        createParticles(obj.x, obj.y, projectile.color, 4);
+                        playSfx('hit');
+                        if (obj.health <= 0) {
+                            // XP orb lasts longer so player has time to pick it up
+                            expOrbs.push(poolManager.createExpOrb({ x: obj.x, y: obj.y, value: obj.exp, life: 8000 }));
+                            createParticles(obj.x, obj.y, '#ffff00', 12);
+                            // Chance to drop lootbox
+                            if (Math.random() < 0.18) {
+                                lootBoxes.push(poolManager.createLootBox({ x: obj.x, y: obj.y, life: 12000, opened: false }));
+                            }
+                            const enemyIndex = enemies.indexOf(obj);
+                            if (enemyIndex !== -1) {
+                                poolManager.releaseEnemy(enemies[enemyIndex]);
+                                enemies.splice(enemyIndex, 1);
+                            }
+                        }
+                        poolManager.releaseProjectile(projectiles[i]);
+                        projectiles.splice(i, 1);
+                        collisionFound = true;
+                        break;
                     }
-                    enemies.splice(j, 1);
                 }
-                projectiles.splice(i, 1);
-                break;
             }
         }
+        
+        if (collisionFound) continue;
 
         if (projectile.life <= 0 || projectile.x < -500 || projectile.x > canvas.width + 500 || projectile.y < -500 || projectile.y > canvas.height + 500) {
+            poolManager.releaseProjectile(projectiles[i]);
             projectiles.splice(i, 1);
         }
     }
@@ -368,7 +278,11 @@ function updateExpOrbs(delta) {
         orb.life -= delta;
         const distance = Math.hypot(player.x - orb.x, player.y - orb.y);
         // attraction range scales with player speed to avoid falling behind
-        const attractionRange = Math.max(120, player.speed * 0.6);
+        // Increased attraction range with exp magnet upgrade
+        let attractionRange = Math.max(120, player.speed * 0.6);
+        if (player.expMagnet) {
+            attractionRange *= 1.5; // 50% larger attraction range
+        }
         if (distance < attractionRange) {
             const angle = Math.atan2(player.y - orb.y, player.x - orb.x);
             // base speed + bonus proportional to player speed
@@ -378,14 +292,17 @@ function updateExpOrbs(delta) {
             orb.y += Math.sin(angle) * speed * (delta / 1000);
             // pickup distance increased so fast players can scoop orbs
             if (distance < Math.max(22, player.size + 6)) {
-                player.exp += orb.value;
-                if (player.exp >= player.expToNext) levelUp();
+                const shouldLevelUp = player.addExp(orb.value);
+                if (shouldLevelUp) levelUp();
                 expOrbs.splice(i, 1);
                 playSfx('pickup');
                 continue;
             }
         }
-        if (orb.life <= 0) expOrbs.splice(i, 1);
+        if (orb.life <= 0) {
+            poolManager.releaseExpOrb(expOrbs[i]);
+            expOrbs.splice(i, 1);
+        }
     }
 }
 
@@ -403,6 +320,18 @@ window.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// Add loot box cleanup in update loop
+function updateLootBoxes(delta) {
+    for (let i = lootBoxes.length - 1; i >= 0; i--) {
+        const box = lootBoxes[i];
+        box.life -= delta;
+        if (box.life <= 0) {
+            poolManager.releaseLootBox(lootBoxes[i]);
+            lootBoxes.splice(i, 1);
+        }
+    }
+}
 
 function openLootBox(index) {
     const box = lootBoxes[index];
@@ -433,10 +362,7 @@ function openLootBox(index) {
 
 
 function levelUp() {
-    player.level++;
-    player.exp -= player.expToNext;
-    player.expToNext = Math.floor(player.expToNext * 1.2);
-    
+    player.levelUp();
     gameState.paused = true;
     showLevelUpModal();
 }
@@ -445,63 +371,87 @@ function showLevelUpModal() {
     const modal = document.getElementById('levelUpModal');
     const options = document.getElementById('upgradeOptions');
     
-    // Generate upgrade options
+    // Generate upgrade options with more variety
     const upgrades = [
         {
             name: 'Health Boost',
             description: 'Increase max health by 25',
             effect: () => {
-                player.maxHealth += 25;
-                player.health = Math.min(player.health + 25, player.maxHealth);
+                player.increaseMaxHealth(25);
             }
         },
         {
             name: 'Speed Enhancement',
-            description: 'Increase movement speed by 0.5',
+            description: 'Increase movement speed by 30',
             effect: () => {
-                player.speed += 0.5;
+                player.increaseSpeed(30);
             }
         },
         {
-            name: 'Weapon Upgrade',
+            name: 'Weapon Damage +20%',
             description: 'Increase all weapon damage by 20%',
             effect: () => {
-                Object.values(weapons).forEach(weapon => {
-                    weapon.damage = Math.floor(weapon.damage * 1.2);
+                weaponSystem.upgradeDamage(0.2);
+            }
+        },
+        {
+            name: 'Fire Rate +15%',
+            description: 'Reduce weapon cooldown by 15%',
+            effect: () => {
+                weaponSystem.upgradeFireRate(0.15);
+            }
+        },
+        {
+            name: 'Projectile Speed +10%',
+            description: 'Increase projectile speed for all weapons',
+            effect: () => {
+                Object.values(weaponSystem.weapons).forEach(weapon => {
+                    weapon.speed = Math.floor(weapon.speed * 1.1);
                 });
             }
         },
         {
-            name: 'Fire Rate Boost',
-            description: 'Reduce weapon cooldown by 15%',
+            name: 'Exp Magnet',
+            description: 'Increase experience orb attraction range',
             effect: () => {
-                Object.values(weapons).forEach(weapon => {
-                    weapon.cooldown = Math.floor(weapon.cooldown * 0.85);
-                });
+                // This will be handled in the exp orb update logic
+                player.expMagnet = true;
+            }
+        },
+        {
+            name: 'Critical Hits',
+            description: '10% chance to deal double damage',
+            effect: () => {
+                weaponSystem.criticalChance = 0.1;
+            }
+        },
+        {
+            name: 'Health Regeneration',
+            description: 'Regenerate 1 health per second',
+            effect: () => {
+                player.healthRegen = 1;
             }
         }
     ];
     
-    // Add weapon unlock options based on level
-    if (player.level === 3 && !activeWeapons.includes('spread')) {
-        upgrades.push({
-            name: 'Unlock Plasma Spread',
-            description: 'Fires 3 projectiles in a spread pattern',
-            effect: () => {
-                activeWeapons.push('spread');
-            }
-        });
-    }
+    // Add weapon unlock options based on config unlock levels
+    const weaponUnlocks = [
+        { name: 'spread', config: GAME_CONFIG.WEAPONS.SPREAD },
+        { name: 'laser', config: GAME_CONFIG.WEAPONS.LASER }
+    ];
     
-    if (player.level === 5 && !activeWeapons.includes('laser')) {
-        upgrades.push({
-            name: 'Unlock Cyber Laser',
-            description: 'High damage, long range laser weapon',
-            effect: () => {
-                activeWeapons.push('laser');
-            }
-        });
-    }
+    weaponUnlocks.forEach(weapon => {
+        if (player.level >= weapon.config.unlockLevel && 
+            !weaponSystem.activeWeapons.includes(weapon.name)) {
+            upgrades.push({
+                name: `Unlock ${weapon.config.name}`,
+                description: weapon.name === 'spread' ? 'Fires 3 projectiles in a spread pattern' : 'High damage, long range laser weapon',
+                effect: () => {
+                    weaponSystem.unlockWeapon(weapon.name);
+                }
+            });
+        }
+    });
     
     // Shuffle and pick 3 random upgrades
     const shuffled = upgrades.sort(() => 0.5 - Math.random());
@@ -530,7 +480,7 @@ function createParticles(x, y, color, count) {
     const maxParticles = 600;
     for (let i = 0; i < count; i++) {
         if (particles.length > maxParticles) break;
-        particles.push({
+        particles.push(poolManager.createParticle({
             x: x + (Math.random() - 0.5) * 20,
             y: y + (Math.random() - 0.5) * 20,
             dx: (Math.random() - 0.5) * 240,
@@ -539,8 +489,34 @@ function createParticles(x, y, color, count) {
             life: 40 + Math.random() * 30,
             maxLife: 40 + Math.random() * 30,
             size: Math.random() * 4 + 1
-        });
+        }));
     }
+}
+
+// Screen shake functions
+function triggerScreenShake(intensity = 10, duration = 200) {
+    gameState.screenShake.intensity = intensity;
+    gameState.screenShake.duration = duration;
+    gameState.screenShake.time = duration;
+}
+
+function updateScreenShake(delta) {
+    if (gameState.screenShake.time > 0) {
+        gameState.screenShake.time -= delta;
+        gameState.screenShake.intensity *= 0.9; // Decay intensity
+    } else {
+        gameState.screenShake.intensity = 0;
+    }
+}
+
+function getScreenShakeOffset() {
+    if (gameState.screenShake.intensity <= 0) return { x: 0, y: 0 };
+    
+    const intensity = gameState.screenShake.intensity;
+    return {
+        x: (Math.random() - 0.5) * intensity,
+        y: (Math.random() - 0.5) * intensity
+    };
 }
 
 function updateParticles() {
@@ -555,6 +531,7 @@ function updateParticles() {
     particle.life -= (dt / 16);
         
         if (particle.life <= 0) {
+            poolManager.releaseParticle(particles[i]);
             particles.splice(i, 1);
         }
     }
@@ -580,7 +557,7 @@ function gameOver() {
 
 function updateUI() {
     // Health bar
-    const healthPercent = (player.health / player.maxHealth) * 100;
+    const healthPercent = player.getHealthPercent();
     document.getElementById('healthBar').style.width = `${healthPercent}%`;
     document.getElementById('healthText').textContent = `${Math.max(0, Math.floor(player.health))}/${player.maxHealth}`;
     
@@ -652,6 +629,19 @@ function playSfx(name) {
     }
 }
 
+// Debug: Show pool stats (press P) and toggle quadtree visualization (press Q)
+let showQuadtree = false;
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyP' && e.shiftKey) {
+        const stats = poolManager.getStats();
+        console.log('Pool Statistics:', stats);
+    }
+    if (e.code === 'KeyQ' && e.shiftKey) {
+        showQuadtree = !showQuadtree;
+        console.log('Quadtree visualization:', showQuadtree ? 'ON' : 'OFF');
+    }
+});
+
 // UI buttons
 document.getElementById('btnPause').addEventListener('click', () => {
     gameState.paused = !gameState.paused;
@@ -680,6 +670,11 @@ document.getElementById('btnFullscreen').addEventListener('click', () => {
 // Rendering
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Apply screen shake offset
+    const shakeOffset = getScreenShakeOffset();
+    ctx.save();
+    ctx.translate(shakeOffset.x, shakeOffset.y);
     
     // Draw background grid
     if (!gameState.lowGraphics) {
@@ -867,6 +862,13 @@ function render() {
     ctx.arc(mouse.x, mouse.y, 10, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+    
+    // Debug: Draw quadtree visualization
+    if (showQuadtree && window.quadtreeManager) {
+        window.quadtreeManager.debugDraw();
+    }
+    
+    ctx.restore(); // Restore from screen shake
 }
 
 // Game loop
@@ -881,17 +883,38 @@ function gameLoop(now) {
     if (!gameState.paused) {
         gameState.elapsed = now - gameState.startTime;
 
-        // difficulty scales with time
-        difficulty = 1 + gameState.elapsed / 60000; // slowly increases over minutes
+        // Improved difficulty scaling with plateaus and varied progression
+        const minutes = gameState.elapsed / 60000;
+        
+        // Base difficulty increases with time, but with plateaus
+        difficulty = 1 + Math.min(minutes * 0.8, 5); // Cap at 6x difficulty
+        
+        // Add periodic difficulty spikes every 30 seconds
+        const spikeFactor = Math.sin(gameState.elapsed / 30000 * Math.PI) * 0.3;
+        
+        // Add player level influence (higher level = slightly easier)
+        const levelFactor = Math.max(0.7, 1 - (player.level * 0.02));
+        
+        const totalDifficulty = difficulty + spikeFactor;
 
-        // Spawn accumulation
-        gameState.spawnAccumulator += delta * (0.6 + difficulty * 0.4);
-            // Cap spawns per frame to avoid freeze if accumulator grew large
-            const maxSpawns = Math.min(5, Math.floor(gameState.spawnAccumulator / 800));
-            for (let s = 0; s < maxSpawns; s++) {
-                spawnEnemy(1 + difficulty * 0.25);
-                gameState.spawnAccumulator -= 800;
-            }
+        // Spawn accumulation with dynamic rates
+        const baseSpawnRate = GAME_CONFIG.SPAWN.BASE_SPAWN_RATE;
+        const difficultyScale = GAME_CONFIG.SPAWN.DIFFICULTY_SCALE;
+        gameState.spawnAccumulator += delta * (baseSpawnRate + totalDifficulty * difficultyScale) * levelFactor;
+        
+        // Cap spawns per frame to avoid freeze if accumulator grew large
+        const maxSpawns = Math.min(GAME_CONFIG.SPAWN.MAX_SPAWNS_PER_FRAME, 
+                                 Math.floor(gameState.spawnAccumulator / GAME_CONFIG.SPAWN.SPAWN_ACCUMULATOR_THRESHOLD));
+        
+        for (let s = 0; s < maxSpawns; s++) {
+            // Vary enemy types based on difficulty
+            let enemyDifficulty = totalDifficulty;
+            if (minutes > 2) enemyDifficulty *= 1.2; // Ramp up after 2 minutes
+            if (minutes > 5) enemyDifficulty *= 1.5; // Significant ramp after 5 minutes
+            
+            spawnEnemy(enemyDifficulty);
+            gameState.spawnAccumulator -= GAME_CONFIG.SPAWN.SPAWN_ACCUMULATOR_THRESHOLD;
+        }
 
         // Update game objects with delta
         updatePlayer(delta);
@@ -899,7 +922,9 @@ function gameLoop(now) {
         updateWeapons(delta);
         updateProjectiles(delta);
         updateExpOrbs(delta);
+        updateLootBoxes(delta);
         updateParticles(delta);
+        updateScreenShake(delta);
     }
 
     // Render and UI

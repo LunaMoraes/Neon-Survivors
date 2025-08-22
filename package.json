@@ -1,0 +1,13 @@
+{
+  "name": "neon-survivors",
+  "version": "1.0.0",
+  "description": "Neon Survivors - Punk Edition game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["game", "html5", "canvas"],
+  "author": "",
+  "license": "MIT"
+}
