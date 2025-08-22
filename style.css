@@ -150,7 +150,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.55); /* allow demo to show behind */
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -188,6 +188,11 @@ body {
 .controls {
     text-align: center;
     margin-bottom: 30px;
+    display: flex;
+    flex-direction: column; /* stack text above buttons */
+    gap: 18px;
+    align-items: center;
+    justify-content: center;
 }
 
 .controls p {
@@ -197,27 +202,64 @@ body {
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
 }
 
+.control-text { margin-right: 18px; }
+.control-buttons { display:flex; gap:18px; }
+
 .start-btn, .restart-btn {
     font-family: 'Orbitron', monospace;
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: bold;
-    padding: 15px 40px;
+    padding: 14px 34px;
     background: linear-gradient(45deg, #00ff88, #0088ff);
     border: none;
     border-radius: 10px;
     color: #000;
     cursor: pointer;
     text-transform: uppercase;
-    transition: all 0.3s ease;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
     box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
     pointer-events: all;
+    min-width: 200px;
 }
 
 .start-btn:hover, .restart-btn:hover {
-    transform: scale(1.1);
-    box-shadow: 0 0 30px rgba(0, 255, 136, 0.8);
+    transform: translateY(-6px);
+    box-shadow: 0 10px 30px rgba(0, 255, 136, 0.6);
     background: linear-gradient(45deg, #0088ff, #ff0088);
 }
+
+/* Perk tree styles for progression modal */
+.perk-trees {
+    display: flex;
+    gap: 18px;
+    justify-content: center;
+    align-items: flex-start;
+}
+.perk-tree {
+    width: 260px;
+    padding: 12px;
+    border: 2px solid #00ff88;
+    position: relative;
+    background: rgba(0,0,0,0.15);
+}
+.perk-node {
+    background: linear-gradient(90deg, rgba(0,255,136,0.06), rgba(255,0,136,0.02));
+    border: 1px solid rgba(0,255,136,0.15);
+    padding: 10px 12px;
+    margin: 8px 0;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.perk-node.locked { opacity: 0.55; }
+.perk-connector {
+    height: 18px;
+    width: 2px;
+    background: rgba(0,255,136,0.35);
+    margin: 0 auto;
+}
+.perk-node .info { margin-left: 8px; font-size: 0.82rem; color: #cfe; }
 
 /* Modals */
 .level-up-modal, .game-over-modal {

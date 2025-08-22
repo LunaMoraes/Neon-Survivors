@@ -59,6 +59,8 @@ let weaponSystem = null;
 let sessionExp = 0; // accumulated exp during current match
 let demoRunning = false;
 let demoInterval = null;
+let demoTickId = null;
+let demoRaf = null;
 let demoPlayer = null;
 
 function startDemo() {
@@ -68,16 +70,36 @@ function startDemo() {
     demoPlayer = { x: canvas.width/2, y: canvas.height/2, size: 20, color: '#00ff88' };
     // lightweight demo weapon system
     const ds = new WeaponSystem();
-    demoInterval = setInterval(() => {
-        // spawn a random enemy near edges
-        spawnEnemy(1.2);
-    }, 1000);
-    // render loop will draw demo player and enemies while not running
+    demoInterval = setInterval(() => { spawnEnemy(1.2); }, 1100);
+    // start a render loop for the demo while the main game is not running
+    function demoLoop() {
+        if (!demoRunning || gameState.running) { demoRaf = null; return; }
+        render();
+        demoRaf = requestAnimationFrame(demoLoop);
+    }
+    if (!demoRaf) demoRaf = requestAnimationFrame(demoLoop);
+    // also run a short demo tick to move projectiles/enemies for visuals while main game isn't running
+    demoTickId = setInterval(() => {
+        // move enemies slowly toward demoPlayer
+        for (const e of enemies) {
+            const dx = demoPlayer.x - e.x; const dy = demoPlayer.y - e.y;
+            const d = Math.hypot(dx,dy) || 1;
+            e.x += (dx/d) * (e.speed * 0.6) * (16/1000);
+            e.y += (dy/d) * (e.speed * 0.6) * (16/1000);
+        }
+        // age projectiles
+        for (let i = projectiles.length-1;i>=0;i--) {
+            projectiles[i].life -= 50;
+            if (projectiles[i].life <= 0) { poolManager.releaseProjectile(projectiles[i]); projectiles.splice(i,1); }
+        }
+    }, 80);
 }
 
 function stopDemo() {
     demoRunning = false;
     if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+    if (demoTickId) { clearInterval(demoTickId); demoTickId = null; }
+    if (demoRaf) { cancelAnimationFrame(demoRaf); demoRaf = null; }
     demoPlayer = null;
 }
 
@@ -115,6 +137,8 @@ function startGame() {
     // Initialize player and weapon system
     player = new PlayerClass(canvas);
     weaponSystem = new WeaponSystem();
+    // Apply any purchased perks to player/weapon at match start
+    applyPerksToPlayer();
     
     // reset
     enemies.length = 0;
@@ -129,6 +153,46 @@ function startGame() {
 
     loadHighscore();
     gameLoop();
+}
+
+// Apply purchased perks to the player and weapon system at the start of a match
+function applyPerksToPlayer() {
+    const state = getPerkState();
+    if (!state || !player || !weaponSystem) return;
+
+    // SPEED: each tier gives percentage increase in movement speed (additive stacking)
+    let speedBonus = 0;
+    const speedTiers = state.trees?.speed || {};
+    Object.keys(speedTiers).forEach(t => {
+        // map tier to percent, keep same as description (8,12,18,25)
+        const tier = parseInt(t,10);
+        if (tier === 1) speedBonus += 0.08;
+        else if (tier === 2) speedBonus += 0.12;
+        else if (tier === 3) speedBonus += 0.18;
+        else if (tier === 4) speedBonus += 0.25;
+    });
+    if (speedBonus > 0) {
+        player.speed = Math.round(player.speed * (1 + speedBonus));
+    }
+
+    // STRENGTH: each tier gives +20% weapon damage and should stack multiplicatively
+    const strengthTiers = state.trees?.strength || {};
+    Object.keys(strengthTiers).forEach(() => {
+        // apply +20% by compounding weapon._damageMultiplier
+        weaponSystem.upgradeDamage(0.20);
+    });
+
+    // DEFENSE: tiers give additive armor percentages (5%, 10%, 16%, 25%) as described
+    const defTiers = state.trees?.defense || {};
+    let armorSum = 0;
+    Object.keys(defTiers).forEach(t => {
+        const tier = parseInt(t,10);
+        if (tier === 1) armorSum += 0.05;
+        else if (tier === 2) armorSum += 0.10;
+        else if (tier === 3) armorSum += 0.16;
+        else if (tier === 4) armorSum += 0.25;
+    });
+    if (armorSum > 0) player.armor = Math.min(0.9, armorSum);
 }
 
 function updatePlayer(delta) {
@@ -643,7 +707,8 @@ function gameOver() {
 
     // Update Game Over modal buttons for restart / main menu
     const modalContent = modal.querySelector('.modal-content');
-    modalContent.innerHTML = `\n        <h2>GAME OVER</h2>\n        <p>You survived for <span id="finalTimeDisplay">${finalTime.textContent}</span></p>\n        <p>Final Level: <span id="finalLevelDisplay">${player.level}</span></p>\n        <div style=\"display:flex;gap:12px;justify-content:center;margin-top:12px;\">\n          <button class=\"start-btn\" id=\"goMain\">MAIN MENU</button>\n          <button class=\"start-btn\" id=\"goRestart\">RESTART</button>\n        </div>\n    `;
+        const runPoints = pointsAwarded;
+        modalContent.innerHTML = `\n        <h2>GAME OVER</h2>\n        <p>You survived for <span id="finalTimeDisplay">${finalTime.textContent}</span></p>\n        <p>Final Level: <span id="finalLevelDisplay">${player.level}</span></p>\n        <p style="margin-top:8px;color:#cfe;">Perk Points earned this run: <strong>${runPoints}</strong></p>\n        <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">\n          <button class="start-btn" id="goMain">MAIN MENU</button>\n          <button class="start-btn" id="goRestart">RESTART</button>\n        </div>\n    `;
     document.getElementById('goMain').addEventListener('click', () => { document.getElementById('gameOverModal').style.display = 'none'; document.getElementById('startScreen').style.display = 'flex'; });
     document.getElementById('goRestart').addEventListener('click', () => { location.reload(); });
 }
@@ -665,6 +730,49 @@ function updateUI() {
         const seconds = timeElapsed % 60;
         document.getElementById('gameTimer').textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     }
+
+    // Show active perk bonuses summary
+    const perkSummary = computePerkSummary();
+    const perkEl = document.getElementById('perkBuffs');
+    if (perkEl) {
+        perkEl.textContent = perkSummary || '\u00A0';
+    }
+}
+
+function computePerkSummary() {
+    const state = getPerkState();
+    if (!state) return '';
+    const parts = [];
+    const s = state.trees || {};
+    // Strength: count tiers
+    const strengthCount = Object.keys(s.strength || {}).length;
+    if (strengthCount > 0) parts.push(`Dmg +${Math.round((Math.pow(1.2, strengthCount)-1)*100)}%`);
+    const speedCount = Object.keys(s.speed || {}).length;
+    if (speedCount > 0) {
+        // derive % from our mapping used earlier
+        let speedPct = 0;
+        for (const t of Object.keys(s.speed||{})) {
+            const tier = parseInt(t,10);
+            if (tier===1) speedPct += 8;
+            else if (tier===2) speedPct += 12;
+            else if (tier===3) speedPct += 18;
+            else if (tier===4) speedPct += 25;
+        }
+        parts.push(`Spd +${speedPct}%`);
+    }
+    const defCount = Object.keys(s.defense || {}).length;
+    if (defCount > 0) {
+        let armorPct = 0;
+        for (const t of Object.keys(s.defense||{})) {
+            const tier = parseInt(t,10);
+            if (tier===1) armorPct += 5;
+            else if (tier===2) armorPct += 10;
+            else if (tier===3) armorPct += 16;
+            else if (tier===4) armorPct += 25;
+        }
+        parts.push(`Armor +${armorPct}%`);
+    }
+    return parts.join(' • ');
 }
 
 // Populate debug overlay with weapon and enemy stats
@@ -1136,33 +1244,84 @@ function renderPerkTrees() {
     const state = getPerkState();
     container.innerHTML = '';
     const trees = ['speed','strength','defense'];
+    // Perk definitions with descriptions and effect hints
+    const perkDefs = {
+        speed: {
+            1: { desc: '+8% move speed', effect: 'Adds +8% base movement speed.' },
+            2: { desc: '+12% move speed', effect: 'Adds +12% movement (stacking).' },
+            3: { desc: '+18% move speed', effect: 'Adds +18% movement.' },
+            4: { desc: '+25% move speed', effect: 'Adds +25% movement.' }
+        },
+        strength: {
+            1: { desc: '+20% weapon damage', effect: 'Increases weapon damage multiplicatively by 20% (stacks).' },
+            2: { desc: '+20% weapon damage', effect: 'Another +20% (stacks with previous tiers).' },
+            3: { desc: '+20% weapon damage', effect: 'Another +20% (stacks).' },
+            4: { desc: '+20% weapon damage', effect: 'Another +20% (stacks).' }
+        },
+        defense: {
+            1: { desc: '+5% armor', effect: 'Grants +5% starting armor (reduces incoming damage).' },
+            2: { desc: '+10% armor', effect: 'Grants +10% starting armor.' },
+            3: { desc: '+16% armor', effect: 'Grants +16% starting armor.' },
+            4: { desc: '+25% armor', effect: 'Grants +25% starting armor.' }
+        }
+    };
+
     trees.forEach(t => {
         const box = document.createElement('div');
-        box.style.border = '2px solid #00ff88';
-        box.style.padding = '12px';
-        box.style.margin = '8px';
-        box.style.display = 'inline-block';
-        box.style.verticalAlign = 'top';
-        box.style.width = '260px';
+        box.className = 'perk-tree';
         const title = document.createElement('h3'); title.textContent = t.toUpperCase(); box.appendChild(title);
-        // simple linear perk nodes (4 nodes)
+
+        // sequential nodes with connectors
         for (let i=1;i<=4;i++) {
             const node = document.createElement('div');
-            node.style.margin = '8px 0';
+            node.className = 'perk-node';
             const owned = !!(state.trees[t] && state.trees[t][i]);
-            node.innerHTML = `<strong>Tier ${i}</strong> - ${owned ? 'OWNED' : 'LOCKED'} <button data-tree="${t}" data-tier="${i}">${owned ? 'Owned' : 'Buy'}</button>`;
-            const btn = node.querySelector('button');
-            btn.disabled = owned || (state.points <= 0);
-            btn.addEventListener('click', () => {
-                if (state.points <= 0) return;
-                state.points = Math.max(0, state.points - 1);
-                state.trees[t] = state.trees[t] || {};
-                state.trees[t][i] = true;
-                savePerkState(state);
+            const prevOwned = (i===1) ? true : !!(state.trees[t] && state.trees[t][i-1]);
+            if (!prevOwned && !owned) node.classList.add('locked');
+
+            // left: label
+            const label = document.createElement('div');
+            label.innerHTML = `<strong>Tier ${i}</strong>`;
+            // right: button / status
+            const right = document.createElement('div');
+            right.style.display = 'flex'; right.style.gap = '8px'; right.style.alignItems = 'center';
+
+            const desc = document.createElement('div');
+            desc.className = 'info';
+            desc.textContent = perkDefs[t][i].desc;
+            desc.title = perkDefs[t][i].effect; // tooltip with extended info
+
+            const btn = document.createElement('button');
+            btn.textContent = owned ? 'Owned' : 'Buy';
+            btn.disabled = owned || !prevOwned || (state.points <= 0);
+            btn.dataset.tree = t; btn.dataset.tier = i;
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                const s = getPerkState();
+                // verify prerequisites
+                const canBuy = !s.trees[t]?.[i] && ((i===1) || !!s.trees[t]?.[i-1]) && (s.points > 0);
+                if (!canBuy) return;
+                s.points = Math.max(0, s.points - 1);
+                s.trees[t] = s.trees[t] || {};
+                s.trees[t][i] = true;
+                savePerkState(s);
                 renderPerkTrees();
             });
+
+            node.appendChild(label);
+            right.appendChild(desc);
+            right.appendChild(btn);
+            node.appendChild(right);
+
             box.appendChild(node);
+
+            if (i < 4) {
+                const connector = document.createElement('div');
+                connector.className = 'perk-connector';
+                box.appendChild(connector);
+            }
         }
+
         container.appendChild(box);
     });
 }

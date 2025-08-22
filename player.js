@@ -7,6 +7,7 @@ class Player {
         this.speed = GAME_CONFIG.PLAYER.SPEED;
         this.health = GAME_CONFIG.PLAYER.HEALTH;
         this.maxHealth = GAME_CONFIG.PLAYER.HEALTH;
+    this.armor = 0; // fraction [0..1] reducing incoming damage
         this.level = 1;
         this.exp = 0;
         this.expToNext = 10;
@@ -66,8 +67,9 @@ class Player {
     
     takeDamage(damage) {
         if (this.invulnerable) return false;
-        
-        this.health -= damage;
+    // Apply armor reduction if present
+    const effective = Math.max(0, Math.round(damage * (1 - (this.armor || 0))));
+    this.health -= effective;
         this.invulnerable = true;
         this.invulnerabilityTime = GAME_CONFIG.PLAYER.INVULNERABILITY_TIME;
         
