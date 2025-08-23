@@ -1,0 +1,20 @@
+{
+  "speed": {
+    "1": { "desc": "+8% move speed", "effect": "Adds +8% base movement speed." },
+    "2": { "desc": "+12% move speed", "effect": "Adds +12% movement (stacking)." },
+    "3": { "desc": "+18% move speed", "effect": "Adds +18% movement." },
+    "4": { "desc": "+25% move speed", "effect": "Adds +25% movement." }
+  },
+  "strength": {
+    "1": { "desc": "+20% weapon damage", "effect": "Increases weapon damage multiplicatively by 20% (stacks)." },
+    "2": { "desc": "+20% weapon damage", "effect": "Another +20% (stacks with previous tiers)." },
+    "3": { "desc": "+20% weapon damage", "effect": "Another +20% (stacks)." },
+    "4": { "desc": "+20% weapon damage", "effect": "Another +20% (stacks)." }
+  },
+  "defense": {
+    "1": { "desc": "+5% armor", "effect": "Grants +5% starting armor (reduces incoming damage)." },
+    "2": { "desc": "+10% armor", "effect": "Grants +10% starting armor." },
+    "3": { "desc": "+16% armor", "effect": "Grants +16% starting armor." },
+    "4": { "desc": "+25% armor", "effect": "Grants +25% starting armor." }
+  }
+}

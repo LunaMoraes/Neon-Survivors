@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Minor Health",
+    "effect": "player.health = Math.min(player.maxHealth, player.health + 30)"
+  },
+  {
+    "name": "Exp Cache",
+    "effect": "player.exp += 5; if (player.exp >= player.expToNext) { gameState.levelUpQueue = (gameState.levelUpQueue || 0) + 1; processLevelQueue(); }"
+  },
+  {
+    "name": "Speed Chip",
+    "effect": "player.speed += 30"
+  },
+  {
+    "name": "Weapon Shard",
+    "effect": "if (weaponSystem) weaponSystem.upgradeDamage(0.25)"
+  },
+  {
+    "name": "Max Health",
+    "effect": "player.maxHealth += 20; player.health += 20"
+  }
+]

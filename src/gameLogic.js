@@ -1,5 +1,9 @@
 // Core game logic restored
-import { gameState, canvas, ctx, enemies, projectiles, particles, expOrbs, lootBoxes, sessionExp, setPlayer } from './state.js';
+import { gameState, canvas, ctx, enemies, projectiles, particles, expOrbs, lootBoxes, sessionExp, setPlayer, demoPlayer } from './state.js';
+import quadtreeManager from './quadtree.js';
+import poolManager from './pool.js';
+import Player from './player.js';
+import GAME_CONFIG from './config.js';
 
 let player = null;
 let weaponSystem = null;
@@ -14,11 +18,14 @@ export function startGame() {
     if (typeof window.resizeCanvas === 'function') window.resizeCanvas();
     
     // Initialize player and weapon system
-    if (window.PlayerClass) {
-        player = new window.PlayerClass(canvas);
-        setPlayer(player); // Update both exported state and window.player
+    // Prefer module imports but support legacy globals
+    const PlayerCtor = Player || window.PlayerClass;
+    if (PlayerCtor) {
+        player = new PlayerCtor(canvas);
+        setPlayer(player); // Update exported state and window.player
     }
-    if (window.WeaponSystem) weaponSystem = new window.WeaponSystem();
+    const WeaponCtor = window.WeaponSystem || null;
+    if (WeaponCtor) weaponSystem = new WeaponCtor();
     
     // Apply any purchased perks to player/weapon at match start
     applyPerksToPlayer();
@@ -78,7 +85,7 @@ function applyPerksToPlayer() {
 }
 
 export function spawnEnemy(difficultyFactor = 1) {
-    const enemyTypes = window.GAME_CONFIG?.ENEMY_TYPES || {};
+    const enemyTypes = (window.GAME_CONFIG || GAME_CONFIG)?.ENEMY_TYPES || {};
     const types = Object.keys(enemyTypes);
     
     // Dynamic enemy type distribution based on difficulty
@@ -115,8 +122,8 @@ export function spawnEnemy(difficultyFactor = 1) {
         case 3: x = -enemyData.size; y = Math.random() * canvas.height; break;
     }
 
-    if (window.poolManager) {
-        enemies.push(window.poolManager.createEnemy({
+    if (poolManager) {
+        enemies.push(poolManager.createEnemy({
             x: x,
             y: y,
             type: type,
@@ -140,7 +147,7 @@ export function updatePlayer(delta) {
 export function updateEnemies(delta) {
     for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
-        const target = player || window._demoPlayer;
+    const target = player || demoPlayer;
         if (!target) continue;
         
         const dx = target.x - enemy.x;
@@ -153,8 +160,8 @@ export function updateEnemies(delta) {
         }
 
         // Check collision with player using quadtree
-        if (player && window.quadtreeManager) {
-            const potentialCollisions = window.quadtreeManager.findCollisions(enemy);
+        if (player && quadtreeManager) {
+            const potentialCollisions = quadtreeManager.findCollisions(enemy);
             
             for (const obj of potentialCollisions) {
                 if (obj === player && !player.invulnerable) {
@@ -167,7 +174,7 @@ export function updateEnemies(delta) {
                         } else {
                             // Knockback
                             const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-                            const kb = window.GAME_CONFIG?.VISUAL?.KNOCKBACK || 40;
+                            const kb = (window.GAME_CONFIG || GAME_CONFIG)?.VISUAL?.KNOCKBACK || 40;
                             player.x += Math.cos(angle) * kb;
                             player.y += Math.sin(angle) * kb;
                             
@@ -182,7 +189,7 @@ export function updateEnemies(delta) {
 
         // Remove enemies offscreen
         if (enemy.x < -2000 || enemy.x > canvas.width + 2000 || enemy.y < -2000 || enemy.y > canvas.height + 2000) {
-            if (window.poolManager) window.poolManager.releaseEnemy(enemies[i]);
+            if (poolManager) poolManager.releaseEnemy(enemies[i]);
             enemies.splice(i, 1);
         }
     }
@@ -193,8 +200,8 @@ export function updateWeapons(delta) {
 }
 
 export function updateProjectiles(delta) {
-    if (window.quadtreeManager) {
-        window.quadtreeManager.update(enemies, projectiles, player);
+    if (quadtreeManager) {
+        quadtreeManager.update(enemies, projectiles, player);
     }
     
     for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -204,8 +211,8 @@ export function updateProjectiles(delta) {
         projectile.life -= delta;
 
         let collisionFound = false;
-        if (window.quadtreeManager) {
-            const potentialCollisions = window.quadtreeManager.findCollisions(projectile);
+        if (quadtreeManager) {
+            const potentialCollisions = quadtreeManager.findCollisions(projectile);
             
             for (const obj of potentialCollisions) {
                 if (obj !== projectile && enemies.includes(obj)) {
@@ -218,21 +225,21 @@ export function updateProjectiles(delta) {
                         if (window.playSfx) window.playSfx('hit');
                         
                         if (obj.health <= 0) {
-                            expOrbs.push(window.poolManager.createExpOrb({ x: obj.x, y: obj.y, value: obj.exp, life: 8000 }));
+                            expOrbs.push(poolManager.createExpOrb({ x: obj.x, y: obj.y, value: obj.exp, life: 8000 }));
                             createParticles(obj.x, obj.y, '#00ff00', 12);
-                            
+
                             if (Math.random() < 0.18) {
-                                lootBoxes.push(window.poolManager.createLootBox({ x: obj.x, y: obj.y, life: 12000, opened: false }));
+                                lootBoxes.push(poolManager.createLootBox({ x: obj.x, y: obj.y, life: 12000, opened: false }));
                             }
-                            
+
                             const enemyIndex = enemies.indexOf(obj);
                             if (enemyIndex !== -1) {
-                                window.poolManager.releaseEnemy(enemies[enemyIndex]);
+                                poolManager.releaseEnemy(enemies[enemyIndex]);
                                 enemies.splice(enemyIndex, 1);
                             }
                         }
                         
-                        window.poolManager.releaseProjectile(projectiles[i]);
+                        poolManager.releaseProjectile(projectiles[i]);
                         projectiles.splice(i, 1);
                         collisionFound = true;
                         break;
@@ -244,7 +251,7 @@ export function updateProjectiles(delta) {
         if (collisionFound) continue;
 
         if (projectile.life <= 0 || projectile.x < -500 || projectile.x > canvas.width + 500 || projectile.y < -500 || projectile.y > canvas.height + 500) {
-            window.poolManager.releaseProjectile(projectiles[i]);
+            poolManager.releaseProjectile(projectiles[i]);
             projectiles.splice(i, 1);
         }
     }
@@ -284,7 +291,7 @@ export function updateExpOrbs(delta) {
             orb.y += (Math.random() - 0.5) * 6 * (delta / 16);
         }
         if (orb.life <= 0) {
-            window.poolManager.releaseExpOrb(expOrbs[i]);
+            poolManager.releaseExpOrb(expOrbs[i]);
             expOrbs.splice(i, 1);
         }
     }
@@ -304,7 +311,7 @@ export function updateLootBoxes(delta) {
         }
         
         if (box.life <= 0) {
-            window.poolManager.releaseLootBox(lootBoxes[i]);
+            poolManager.releaseLootBox(lootBoxes[i]);
             lootBoxes.splice(i, 1);
         }
     }
@@ -416,9 +423,10 @@ function showLevelUpModal() {
     ];
     
     // Add weapon unlock options
+    const cfg = (window.GAME_CONFIG || GAME_CONFIG);
     const weaponUnlocks = [
-        { name: 'spread', config: window.GAME_CONFIG?.WEAPONS?.SPREAD },
-        { name: 'laser', config: window.GAME_CONFIG?.WEAPONS?.LASER }
+        { name: 'spread', config: cfg?.WEAPONS?.SPREAD },
+        { name: 'laser', config: cfg?.WEAPONS?.LASER }
     ];
     
     weaponUnlocks.forEach(weapon => {
@@ -463,7 +471,7 @@ function createParticles(x, y, color, count) {
     const maxParticles = 600;
     for (let i = 0; i < count; i++) {
         if (particles.length > maxParticles) break;
-        particles.push(window.poolManager.createParticle({
+        particles.push(poolManager.createParticle({
             x: x + (Math.random() - 0.5) * 20,
             y: y + (Math.random() - 0.5) * 20,
             dx: (Math.random() - 0.5) * 240,
@@ -752,7 +760,7 @@ export function updateParticles() {
         particle.life -= (dt / 16);
         
         if (particle.life <= 0) {
-            window.poolManager.releaseParticle(particles[i]);
+            poolManager.releaseParticle(particles[i]);
             particles.splice(i, 1);
         }
     }

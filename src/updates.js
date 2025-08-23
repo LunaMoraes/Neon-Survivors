@@ -1,4 +1,5 @@
 import { gameState, canvas, enemies, projectiles, particles, expOrbs, lootBoxes, player as _playerRef, demoPlayer } from './state.js';
+import GAME_CONFIG from './config.js';
 import { updatePlayer, updateEnemies, updateWeapons, updateProjectiles, updateExpOrbs, updateLootBoxes, updateParticles, updateScreenShake, updateUI, spawnEnemy } from './gameLogic.js';
 import render from './render.js';
 
@@ -16,14 +17,13 @@ export function gameLoop(now) {
         const minutes = gameState.elapsed / 60000;
         difficulty = 1 + Math.min(minutes * 0.8, 5);
         const spikeFactor = Math.sin(gameState.elapsed / 30000 * Math.PI) * 0.3;
-        const levelFactor = Math.max(0.7, 1 - ((window.player?.level || 0) * 0.02));
+    const levelFactor = Math.max(0.7, 1 - ((_playerRef?.level || 0) * 0.02));
         const totalDifficulty = difficulty + spikeFactor;
-
-        const baseSpawnRate = window.GAME_CONFIG.SPAWN.BASE_SPAWN_RATE;
-        const difficultyScale = window.GAME_CONFIG.SPAWN.DIFFICULTY_SCALE;
+        const baseSpawnRate = (window.GAME_CONFIG || GAME_CONFIG).SPAWN.BASE_SPAWN_RATE;
+        const difficultyScale = (window.GAME_CONFIG || GAME_CONFIG).SPAWN.DIFFICULTY_SCALE;
         gameState.spawnAccumulator += delta * (baseSpawnRate + totalDifficulty * difficultyScale) * levelFactor;
 
-        const maxSpawns = Math.min(window.GAME_CONFIG.SPAWN.MAX_SPAWNS_PER_FRAME, Math.floor(gameState.spawnAccumulator / window.GAME_CONFIG.SPAWN.SPAWN_ACCUMULATOR_THRESHOLD));
+        const maxSpawns = Math.min((window.GAME_CONFIG || GAME_CONFIG).SPAWN.MAX_SPAWNS_PER_FRAME, Math.floor(gameState.spawnAccumulator / (window.GAME_CONFIG || GAME_CONFIG).SPAWN.SPAWN_ACCUMULATOR_THRESHOLD));
         for (let s = 0; s < maxSpawns; s++) {
             let enemyDifficulty = totalDifficulty;
             if (minutes > 2) enemyDifficulty *= 1.2;

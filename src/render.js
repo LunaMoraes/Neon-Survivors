@@ -63,7 +63,7 @@ export function render() {
     });
 
     // Render player
-    const currentPlayer = window.player || player;
+    const currentPlayer = player || (typeof window !== 'undefined' && window.player) || null;
     if (currentPlayer && gameState.running) {
         const p = currentPlayer;
         ctx.save();
@@ -184,9 +184,10 @@ export function render() {
         }
     }
     
-    // Render demo player
-    if (window._demoPlayer && !gameState.running) {
-        const dp = window._demoPlayer;
+    // Render demo player (fallback to exported demoPlayer)
+    const dpCandidate = demoPlayer || (typeof window !== 'undefined' && window._demoPlayer);
+    if (dpCandidate && !gameState.running) {
+        const dp = dpCandidate;
         ctx.fillStyle = dp.color || '#00ff88';
         if (!gameState.lowGraphics) {
             ctx.shadowColor = dp.color || '#00ff88';

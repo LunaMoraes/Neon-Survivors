@@ -21,7 +21,7 @@ const poolResetters = {
 
 const pools = { enemy: new ObjectPool(poolFactories.enemy, poolResetters.enemy, 50), projectile: new ObjectPool(poolFactories.projectile, poolResetters.projectile, 100), particle: new ObjectPool(poolFactories.particle, poolResetters.particle, 200), expOrb: new ObjectPool(poolFactories.expOrb, poolResetters.expOrb, 50), lootBox: new ObjectPool(poolFactories.lootBox, poolResetters.lootBox, 10) };
 
-window.poolManager = {
+const poolManager = {
     createEnemy: (data) => { const e = pools.enemy.acquire(); poolResetters.enemy(e, data); return e; },
     createProjectile: (data) => { const p = pools.projectile.acquire(); poolResetters.projectile(p, data); return p; },
     createParticle: (data) => { const p = pools.particle.acquire(); poolResetters.particle(p, data); return p; },
@@ -31,4 +31,10 @@ window.poolManager = {
     getStats: () => ({ enemies:{active:pools.enemy.getActiveCount(), pool:pools.enemy.getPoolSize()}, projectiles:{active:pools.projectile.getActiveCount(), pool:pools.projectile.getPoolSize()}, particles:{active:pools.particle.getActiveCount(), pool:pools.particle.getPoolSize()}, expOrbs:{active:pools.expOrb.getActiveCount(), pool:pools.expOrb.getPoolSize()}, lootBoxes:{active:pools.lootBox.getActiveCount(), pool:pools.lootBox.getPoolSize()} })
 };
 
-export default window.poolManager;
+// Provide backwards-compatible global but prefer module import
+if (typeof window !== 'undefined') {
+    window.poolManager = window.poolManager || poolManager;
+}
+
+export default poolManager;
+export { poolManager };

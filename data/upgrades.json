@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Health Boost",
+    "description": "Increase max health by 25",
+    "effect": "player.increaseMaxHealth(25)"
+  },
+  {
+    "name": "Speed Enhancement",
+    "description": "Increase movement speed by 30",
+    "effect": "player.increaseSpeed(30)"
+  },
+  {
+    "name": "Weapon Damage +40%",
+    "description": "Increase all weapon damage by 40% (stacks)",
+    "effect": "weaponSystem.upgradeDamage(0.4)"
+  },
+  {
+    "name": "Fire Rate +15%",
+    "description": "Reduce weapon cooldown by 15%",
+    "effect": "weaponSystem.upgradeFireRate(0.15)"
+  },
+  {
+    "name": "Projectile Speed +10%",
+    "description": "Increase projectile speed for all weapons",
+    "effect": "weapon.speed = Math.floor(weapon.speed * 1.1)"
+  },
+  {
+    "name": "Exp Magnet",
+    "description": "Increase experience orb attraction range",
+    "effect": "player.expMagnet = true"
+  },
+  {
+    "name": "Critical Hits",
+    "description": "10% chance to deal double damage",
+    "effect": "weaponSystem.criticalChance = 0.1"
+  },
+  {
+    "name": "Health Regeneration",
+    "description": "Regenerate 1 health per second",
+    "effect": "player.healthRegen = 1"
+  }
+]

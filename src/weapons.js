@@ -1,9 +1,13 @@
+import poolManager from './pool.js';
+import GAME_CONFIG from './config.js';
+
 export class WeaponSystem {
     constructor() {
+        const cfg = (window.GAME_CONFIG || GAME_CONFIG);
         this.weapons = {
-            basic: { ...window.GAME_CONFIG.WEAPONS.BASIC, lastShot: 0 },
-            spread: { ...window.GAME_CONFIG.WEAPONS.SPREAD, lastShot: 0 },
-            laser: { ...window.GAME_CONFIG.WEAPONS.LASER, lastShot: 0 }
+            basic: { ...cfg.WEAPONS.BASIC, lastShot: 0 },
+            spread: { ...cfg.WEAPONS.SPREAD, lastShot: 0 },
+            laser: { ...cfg.WEAPONS.LASER, lastShot: 0 }
         };
         Object.values(this.weapons).forEach(w => { w._baseDamage = w.damage; w._damageMultiplier = 0; });
         this.activeWeapons = ['basic']; this.unlockedWeapons = new Set(['basic']); this.criticalChance = 0;
@@ -24,7 +28,8 @@ export class WeaponSystem {
     }
     createProjectile(x, y, angle, weapon, projectiles) {
         let base = weapon._baseDamage || weapon.damage || 1; let mult = weapon._damageMultiplier || 0; let damage = Math.round(base * (1 + mult)); let isCritical = false; if (this.criticalChance > 0 && Math.random() < this.criticalChance) { damage *= 2; isCritical = true; }
-        const projectile = poolManager.createProjectile({ x, y, dx: Math.cos(angle) * weapon.speed, dy: Math.sin(angle) * weapon.speed, damage, color: isCritical ? '#ffffff' : weapon.color, size: isCritical ? weapon.size * 1.5 : weapon.size, life: window.GAME_CONFIG.GAME.PROJECTILE_LIFE, isCritical });
+    const cfg = (window.GAME_CONFIG || GAME_CONFIG);
+    const projectile = poolManager.createProjectile({ x, y, dx: Math.cos(angle) * weapon.speed, dy: Math.sin(angle) * weapon.speed, damage, color: isCritical ? '#ffffff' : weapon.color, size: isCritical ? weapon.size * 1.5 : weapon.size, life: cfg.GAME.PROJECTILE_LIFE, isCritical });
         projectiles.push(projectile); playSfx('shoot'); return projectile;
     }
     unlockWeapon(name) { if (!this.activeWeapons.includes(name)) { this.activeWeapons.push(name); return true; } return false; }
@@ -33,5 +38,8 @@ export class WeaponSystem {
     getWeapon(name) { return this.weapons[name]; }
 }
 
-window.WeaponSystem = WeaponSystem;
+// Non-destructive global fallback for legacy code
+if (typeof window !== 'undefined') {
+    window.WeaponSystem = window.WeaponSystem || WeaponSystem;
+}
 export default WeaponSystem;

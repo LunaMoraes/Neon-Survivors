@@ -13,6 +13,8 @@ export const gameState = {
     screenShake: { intensity: 0, duration: 0, time: 0 }
 };
 
+import quadtreeManager from './quadtree.js';
+
 export const canvas = document.getElementById('gameCanvas');
 export const ctx = canvas.getContext('2d');
 // Reticle / mouse state
@@ -56,7 +58,7 @@ export let keys = {};
 export function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    if (window.quadtreeManager) window.quadtreeManager.init(canvas);
+    if (quadtreeManager) quadtreeManager.init(canvas);
 }
 
 // initial resize
@@ -64,9 +66,9 @@ resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 // Helpers to manage demo player from other modules (keeps exported binding live)
-export function setDemoPlayer(obj) { demoPlayer = obj; }
-export function clearDemoPlayer() { demoPlayer = null; }
+export function setDemoPlayer(obj) { demoPlayer = obj; if (typeof window !== 'undefined' && window._demoPlayer === undefined) window._demoPlayer = obj; }
+export function clearDemoPlayer() { if (typeof window !== 'undefined' && window._demoPlayer === demoPlayer) delete window._demoPlayer; demoPlayer = null; }
 
 // Helper to manage main player from other modules
-export function setPlayer(obj) { player = obj; window.player = obj; }
-export function clearPlayer() { player = null; window.player = null; }
+export function setPlayer(obj) { player = obj; if (typeof window !== 'undefined' && window.player === undefined) window.player = obj; }
+export function clearPlayer() { if (typeof window !== 'undefined' && window.player === player) delete window.player; player = null; }

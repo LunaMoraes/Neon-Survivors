@@ -160,9 +160,15 @@ function debugDrawQuadtree(ctx, tree) {
 }
 
 // Export for global use
-window.quadtreeManager = {
+const quadtreeManager = {
     init: initQuadtree,
     update: updateQuadtree,
     findCollisions: findPotentialCollisions,
-    debugDraw: () => debugDrawQuadtree(ctx, quadtree)
+    debugDraw: (ctxArg) => debugDrawQuadtree(ctxArg || (typeof window !== 'undefined' && window.ctx) || null, quadtree)
 };
+
+if (typeof window !== 'undefined') {
+    window.quadtreeManager = window.quadtreeManager || quadtreeManager;
+}
+
+export default quadtreeManager;

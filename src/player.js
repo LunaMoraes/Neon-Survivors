@@ -1,10 +1,13 @@
 // Player class (module copy)
+import GAME_CONFIG from './config.js';
+
 export class Player {
     constructor(canvas) {
+        const cfg = (window.GAME_CONFIG || GAME_CONFIG);
         this.x = canvas.width / 2; this.y = canvas.height / 2;
-        this.size = window.GAME_CONFIG.PLAYER.SIZE;
-        this.speed = window.GAME_CONFIG.PLAYER.SPEED;
-        this.health = window.GAME_CONFIG.PLAYER.HEALTH; this.maxHealth = window.GAME_CONFIG.PLAYER.HEALTH;
+        this.size = cfg.PLAYER.SIZE;
+        this.speed = cfg.PLAYER.SPEED;
+        this.health = cfg.PLAYER.HEALTH; this.maxHealth = cfg.PLAYER.HEALTH;
         this.armor = 0; this.level = 1; this.exp = 0; this.expToNext = 10; this.color = '#00ff88'; this.invulnerable = false; this.invulnerabilityTime = 0; this.keys = {};
         this.expMagnet = false; this.healthRegen = 0;
         this.bindEvents();
@@ -18,7 +21,7 @@ export class Player {
         this.x += dx * this.speed * (delta / 1000); this.y += dy * this.speed * (delta / 1000);
         this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x)); this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
     }
-    takeDamage(damage) { if (this.invulnerable) return false; const effective = Math.max(0, Math.round(damage * (1 - (this.armor || 0)))); this.health -= effective; this.invulnerable = true; this.invulnerabilityTime = window.GAME_CONFIG.PLAYER.INVULNERABILITY_TIME; return this.health <= 0; }
+    takeDamage(damage) { if (this.invulnerable) return false; const effective = Math.max(0, Math.round(damage * (1 - (this.armor || 0)))); this.health -= effective; this.invulnerable = true; this.invulnerabilityTime = (window.GAME_CONFIG || GAME_CONFIG).PLAYER.INVULNERABILITY_TIME; return this.health <= 0; }
     addExp(amount) { this.exp += amount; return this.exp >= this.expToNext; }
     levelUp() { this.level++; this.exp -= this.expToNext; this.expToNext = Math.floor(this.expToNext * 1.2); return true; }
     heal(amount) { this.health = Math.min(this.maxHealth, this.health + amount); }
@@ -27,5 +30,8 @@ export class Player {
     getHealthPercent() { return (this.health / this.maxHealth) * 100; }
 }
 
-window.PlayerClass = Player;
+// Prefer module export; keep a non-destructive global fallback for legacy code
+if (typeof window !== 'undefined') {
+    window.PlayerClass = window.PlayerClass || Player;
+}
 export default Player;

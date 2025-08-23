@@ -1,4 +1,5 @@
 import { canvas, enemies, projectiles, setDemoPlayer, clearDemoPlayer, demoPlayer } from './state.js';
+import poolManager from './pool.js';
 
 // We'll manage demo-specific state on window.state to avoid circular exports
 export function startDemo() {
@@ -9,7 +10,7 @@ export function startDemo() {
     setDemoPlayer({ x: canvas.width / 2, y: canvas.height / 2, size: 20, color: '#00ff88', invulnerable: false, level: 1 });
 
     // seed a few enemies immediately
-    const pm = window.poolManager;
+    const pm = poolManager;
     if (pm) {
         for (let i = 0; i < 4; i++) {
             const side = Math.floor(Math.random() * 4);
@@ -28,7 +29,7 @@ export function startDemo() {
     // spawn more often so demo is visible
     window._demoInterval = setInterval(() => {
         if (!window._demoRunning) return;
-        const pm = window.poolManager;
+        const pm = poolManager;
         if (!pm) return;
         const side = Math.floor(Math.random() * 4);
         let x, y; const size = 12 + Math.random() * 18;
@@ -53,14 +54,14 @@ export function startDemo() {
             e.y += (dy/d) * (e.speed * 0.6) * (16/1000);
             // remove if far off
             if (e.x < -2000 || e.x > canvas.width + 2000 || e.y < -2000 || e.y > canvas.height + 2000) {
-                window.poolManager.releaseEnemy(e);
+                poolManager.releaseEnemy(e);
                 enemies.splice(i,1);
             }
         }
         for (let i = projectiles.length - 1; i >= 0; i--) {
             projectiles[i].life -= 50;
             if (projectiles[i].life <= 0) {
-                window.poolManager.releaseProjectile(projectiles[i]);
+                poolManager.releaseProjectile(projectiles[i]);
                 projectiles.splice(i,1);
             }
         }
